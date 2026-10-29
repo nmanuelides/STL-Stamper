@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>STL Stamper</title>
+<link rel="icon" href="assets/icon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/icon-256.png" sizes="256x256">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
@@ -100,7 +103,7 @@
           <button class="btn" data-act="centerV">CENTER V</button>
           <button class="btn" data-act="centerHV">CENTER</button>
         </div>
-        <div class="hint">DRAG STAMP = MOVE (+SHIFT = LOCK AXIS)<br>DOUBLE-CLICK = PLACE &middot; RMB ORBIT &middot; MMB PAN &middot; Q/E ROTATE &middot; [ ] SIZE &middot; ARROWS NUDGE</div>
+        <div class="hint">CLICK STAMP = HANDLES (RESIZE / ROTATE)<br>DRAG STAMP = MOVE (+SHIFT = LOCK AXIS)<br>DOUBLE-CLICK = PLACE &middot; RMB ORBIT &middot; MMB PAN &middot; Q/E ROTATE &middot; [ ] SIZE &middot; ARROWS NUDGE</div>
       </section>
 
       <section class="win"><h2>MODE</h2>
@@ -159,6 +162,15 @@
 <div id="viewport">
   <div id="vpMsg">NO MODEL LOADED<br>PRESS F2 OR DROP AN .STL</div>
   <div id="busy" hidden>&#9632; COMPUTING CSG...</div>
+  <svg id="gizmo" aria-hidden="true">
+    <polygon class="gz-frame"/>
+    <line class="gz-stem"/>
+    <rect class="gz-corner" data-h="0" width="12" height="12"/>
+    <rect class="gz-corner" data-h="1" width="12" height="12"/>
+    <rect class="gz-corner" data-h="2" width="12" height="12"/>
+    <rect class="gz-corner" data-h="3" width="12" height="12"/>
+    <circle class="gz-rot" r="7"/>
+  </svg>
   <div id="hud"><span id="hudL"></span><span id="hudR">LMB STAMP &middot; RMB ORBIT &middot; MMB PAN &middot; WHEEL ZOOM</span></div>
 </div>
 
@@ -200,6 +212,9 @@ KEYS
                 + SHIFT: LOCK TO THE FIRST DIRECTION MOVED
                 (HORIZONTAL OR VERTICAL) UNTIL SHIFT IS UP
                 DOUBLE-CLICK THE MODEL = PUT STAMP THERE
+ CLICK STAMP .. SELECTS IT: CORNER HANDLES RESIZE,
+                ROUND HANDLE ROTATES (+SHIFT = 15 DEG STEPS).
+                CLICK ELSEWHERE OR ESC TO DESELECT
  CENTER H/V ... CENTER THE STAMP ON ITS FACE
  RIGHT MOUSE .. ORBIT CAMERA
  MIDDLE MOUSE . PAN CAMERA
@@ -451,6 +466,7 @@ renderer.setAnimationLoop(() => {
   // the bed grid sits on the model's base: hide it when looking from below
   if (grid) grid.visible = camera.position.z > 0.01;
   renderer.render(scene, camera);
+  updateGizmo();
 });
 
 const evaluator = new Evaluator();
@@ -1623,9 +1639,11 @@ const screenOf = v => {
   return { x: r.left + (s.x + 1) / 2 * r.width, y: r.top + (1 - s.y) / 2 * r.height };
 };
 vp.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !ready()) return;
+  if (e.button !== 0 || !ready() || e.target.closest('#gizmo .gz-corner, #gizmo .gz-rot')) return;
   setRay(e);
-  if (!pick.intersectObject(artMesh, false).length) return;
+  // clicking the stamp selects it (shows resize / rotate handles); clicking elsewhere deselects
+  stampSelected = overStamp(e);
+  if (!stampSelected) return;
   const c = screenOf(place.p);
   grabOffset = { x: e.clientX - c.x, y: e.clientY - c.y };
   moved = false;
@@ -1650,11 +1668,115 @@ vp.addEventListener('pointermove', e => {
       updatePreview();
     } else if (ready() && !ev.buttons) {
       setRay(ev);
-      vp.classList.toggle('over', pick.intersectObject(artMesh, false).length > 0);
+      vp.classList.toggle('over', overStamp(ev));
     }
   });
   moveQueued = e;
 });
+
+/* ---------- gizmo: frame + corner (resize) and round (rotate) handles, in screen space ---------- */
+let stampSelected = false, gizmoDrag = null;
+const gzEls = {
+  svg: $('#gizmo'), frame: $('#gizmo .gz-frame'), stem: $('#gizmo .gz-stem'),
+  corners: $$('#gizmo .gz-corner'), rot: $('#gizmo .gz-rot'),
+};
+const vpPx = v => {
+  const s = v.clone().project(camera);
+  return { x: (s.x + 1) / 2 * vp.clientWidth, y: (1 - s.y) / 2 * vp.clientHeight, behind: s.z > 1 };
+};
+
+function gizmoGeometry() {
+  const { O, N, U, V } = frame();
+  const w = art.w * P.size / 2, h = art.h * P.size / 2;
+  // sit on the stamp's top so the frame isn't buried in relief mode
+  const lift = N.clone().multiplyScalar(P.mode === 'relief' ? P.relief : 0.05);
+  const at = (x, y) => vpPx(O.clone().add(lift).addScaledVector(U, x).addScaledVector(V, y));
+  const corners = [at(-w, h), at(w, h), at(w, -h), at(-w, -h)];
+  const center = at(0, 0), top = at(0, h);
+  // screen handedness of the stamp frame: tells which way on-screen rotation maps to ROTATE
+  const u = at(w, 0), v = at(0, h);
+  const cross = (u.x - center.x) * (v.y - center.y) - (u.y - center.y) * (v.x - center.x);
+  return { corners, center, top, cross };
+}
+
+function updateGizmo() {
+  const show = stampSelected && ready() && !!art;
+  gzEls.svg.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  const g = gizmoGeometry();
+  if (g.center.behind) { gzEls.svg.style.display = 'none'; return; }
+  gzEls.frame.setAttribute('points', g.corners.map(p => `${p.x},${p.y}`).join(' '));
+  g.corners.forEach((p, i) => {
+    gzEls.corners[i].setAttribute('x', p.x - 6);
+    gzEls.corners[i].setAttribute('y', p.y - 6);
+  });
+  let dx = g.top.x - g.center.x, dy = g.top.y - g.center.y;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  const rx = g.top.x + dx * 30, ry = g.top.y + dy * 30;
+  gzEls.stem.setAttribute('x1', g.top.x); gzEls.stem.setAttribute('y1', g.top.y);
+  gzEls.stem.setAttribute('x2', rx); gzEls.stem.setAttribute('y2', ry);
+  gzEls.rot.setAttribute('cx', rx); gzEls.rot.setAttribute('cy', ry);
+}
+
+function gizmoPointer(e) {
+  const r = vp.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+// on the stamp's geometry, or anywhere inside its frame (gaps between shapes count too); needs setRay(e) first
+function overStamp(e) {
+  if (pick.intersectObject(artMesh, false).length) return true;
+  const g = gizmoGeometry(), m = gizmoPointer(e);
+  return !g.center.behind && pip(m.x, m.y, g.corners);
+}
+gzEls.svg.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.gz-corner, .gz-rot');
+  if (!el || e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+  el.setPointerCapture(e.pointerId);
+  el.classList.add('active');
+  const g = gizmoGeometry(), m = gizmoPointer(e);
+  gizmoDrag = {
+    el, kind: el.classList.contains('gz-rot') ? 'rot' : 'size',
+    c: g.center, cross: g.cross,
+    dist: Math.max(4, Math.hypot(m.x - g.center.x, m.y - g.center.y)),
+    ang: Math.atan2(m.y - g.center.y, m.x - g.center.x),
+    size: P.size, rot: P.rot,
+  };
+  holding = true; // keeps auto-build and undo snapshots for the release
+  if (result) clearResult();
+});
+gzEls.svg.addEventListener('pointermove', e => {
+  const d = gizmoDrag;
+  if (!d) return;
+  const m = gizmoPointer(e);
+  if (d.kind === 'size') {
+    const k = Math.hypot(m.x - d.c.x, m.y - d.c.y) / d.dist;
+    P.size = Math.max(1, +(d.size * k).toFixed(1));
+    ui.size.set(P.size);
+    onParam('size');
+  } else {
+    let delta = (Math.atan2(m.y - d.c.y, m.x - d.c.x) - d.ang) / DEG;
+    if (d.cross > 0) delta = -delta; // viewed from behind the face
+    let rot = d.rot - delta;
+    if (e.shiftKey) rot = Math.round(rot / 15) * 15;
+    rot = ((Math.round(rot) + 540) % 360) - 180;
+    P.rot = rot;
+    ui.rot.set(rot);
+    onParam('rot');
+  }
+});
+const endGizmoDrag = () => {
+  if (!gizmoDrag) return;
+  gizmoDrag.el.classList.remove('active');
+  gizmoDrag = null;
+  holding = false;
+  scheduleBuild();
+  noteChange();
+};
+gzEls.svg.addEventListener('pointerup', endGizmoDrag);
+gzEls.svg.addEventListener('pointercancel', endGizmoDrag);
 
 // Shift while dragging: the first clear direction of travel (face horizontal or vertical) wins
 // until Shift is released; the normal stays fixed meanwhile
@@ -2453,7 +2575,7 @@ function setParam(k, v) { P[k] = v; ui[k].set(v); onParam(k); }
 addEventListener('keydown', e => {
   const fk = { F1: 'help', F2: 'loadStl', F3: 'loadImg', F4: 'demo', F5: 'build', F8: 'expStl', F9: 'exp3mf', F10: 'crt' }[e.key];
   if (fk) { e.preventDefault(); actions[fk](); return; }
-  if (e.key === 'Escape') { help(false); return; }
+  if (e.key === 'Escape') { help(false); stampSelected = false; return; }
   if (e.key === 'F7' || e.key === 'Home') { e.preventDefault(); fitCamera(); return; }
   // undo / redo (number fields keep their own text undo)
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.target.matches('input[type=number]')) {

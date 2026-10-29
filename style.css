@@ -358,6 +358,16 @@ input[type=color]::-moz-color-swatch { border: none; }
   justify-content: space-between;
   gap: 16px;
 }
+/* on-canvas resize / rotate handles for the selected stamp */
+#gizmo { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; display: none; }
+#gizmo .gz-frame { fill: none; stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 6 4; filter: drop-shadow(0 0 2px #000); }
+#gizmo .gz-stem { stroke: var(--amber); stroke-width: 1.5; filter: drop-shadow(0 0 2px #000); }
+#gizmo .gz-corner, #gizmo .gz-rot { fill: #120a00; stroke: var(--amber); stroke-width: 2; pointer-events: all; }
+#gizmo .gz-corner { cursor: nwse-resize; }
+#gizmo .gz-corner[data-h="1"], #gizmo .gz-corner[data-h="3"] { cursor: nesw-resize; }
+#gizmo .gz-rot { cursor: grab; }
+#gizmo .gz-corner:hover, #gizmo .gz-rot:hover, #gizmo .active { fill: var(--amber); }
+
 #busy {
   position: absolute;
   top: 10px; right: 12px;
