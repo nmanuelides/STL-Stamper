@@ -201,6 +201,69 @@ body.nofx #ui { text-shadow: none; }
 .pdel:hover { background: #ff4a1a; color: #120a00; border-color: #ff4a1a; }
 .hint { color: var(--hint); font-size: 19px; }
 .err { color: #ff5a2a; }
+[hidden] { display: none !important; }
+
+/* stamps list */
+#stampList { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
+.stamp-row.sel { background: var(--amber-faint); color: var(--amber-hi); }
+.chip { width: 14px; height: 14px; flex: none; border: 1px solid var(--amber-dim); align-self: center; }
+
+/* text stamp */
+#txtInput {
+  width: 100%;
+  resize: vertical;
+  min-height: 3.6em;
+  font: inherit;
+  color: var(--amber-hi);
+  background: #000;
+  border: 1px solid var(--amber-dim);
+  padding: 4px 6px;
+  text-shadow: inherit;
+  user-select: text;
+}
+#txtInput:focus, #fontSearch:focus { outline: none; border-color: var(--amber); }
+.font-row span.info { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* font picker */
+.overlay {
+  position: fixed;
+  inset: 10px;
+  border-radius: 38px / 34px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 3, 0, .82);
+  text-shadow: var(--glow);
+}
+.fontdlg { width: min(640px, 92vw); }
+#fontSearch {
+  font: inherit;
+  color: var(--amber-hi);
+  background: #000;
+  border: 1px solid var(--amber-dim);
+  padding: 4px 8px;
+  text-transform: uppercase;
+  text-shadow: inherit;
+}
+#fontList { display: flex; flex-direction: column; max-height: 52vh; overflow-y: auto; gap: 2px; }
+.font-item {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+  text-shadow: inherit;
+}
+.font-item:hover, .font-item:focus-visible { background: var(--amber-faint); outline: none; }
+.font-item.on { color: var(--amber-hi); }
+.fi-name { width: 13em; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-sample { font-size: 26px; color: #ffd9b0; text-shadow: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: none; }
 
 .sl label { display: flex; align-items: baseline; gap: 6px; }
 .sl label span { flex: 1; }

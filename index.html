@@ -48,14 +48,48 @@
         <button class="btn primary" data-act="loadStl">F2 LOAD STL / 3MF</button>
         <div class="info" id="stlInfo">NO MODEL</div>
         <div id="parts"></div>
-        <button class="btn primary" data-act="loadImg">F3 LOAD SVG / PNG</button>
-        <div class="info" id="imgInfo">NO IMAGE</div>
         <button class="btn" data-act="demo">F4 LOAD DEMO</button>
         <div class="hint">...OR DROP FILES ANYWHERE<br>WORK IS SAVED IN THIS BROWSER AND COMES BACK ON REFRESH</div>
         <button class="btn" data-act="clearSession">NEW SESSION (FORGET ALL)</button>
       </section>
 
-      <section class="win"><h2>TRACE</h2>
+      <section class="win"><h2>STAMPS</h2>
+        <div class="row">
+          <button class="btn primary" data-act="loadImg">F3 + IMAGE</button>
+          <button class="btn primary" data-act="addText">+ TEXT</button>
+          <button class="btn primary" data-act="addShape">+ SHAPE</button>
+        </div>
+        <div id="stampList"></div>
+        <div class="hint">CLICK A ROW OR A STAMP IN THE VIEWPORT TO EDIT IT &middot; DEL KEY REMOVES IT</div>
+      </section>
+
+      <section class="win" data-kind="text"><h2>TEXT</h2>
+        <textarea id="txtInput" rows="3" spellcheck="false"></textarea>
+        <div class="row font-row"><span>FONT:</span><span class="info" id="fontName"></span><button class="btn" data-act="pickFont">CHANGE</button></div>
+        <div class="hint">WEIGHT:</div>
+        <div class="rd" id="weightRow"></div>
+        <div class="ck" data-k="txtItalic" data-label="ITALIC"></div>
+        <div class="sl" data-k="txtSpacing" data-label="LETTER SPACING" data-unit="%" data-min="-20" data-max="100" data-step="1"></div>
+        <div class="sl" data-k="txtLine" data-label="LINE HEIGHT" data-unit="%" data-min="60" data-max="250" data-step="5"></div>
+        <div class="rd" data-k="txtAlign" data-opts="left:LEFT,center:CENTER,right:RIGHT"></div>
+      </section>
+
+      <section class="win" data-kind="shape"><h2>SHAPE</h2>
+        <div class="rd" data-k="shpType" data-opts="circle:CIRCLE,square:SQUARE,triangle:TRIANGLE,pentagon:PENTAGON,hexagon:HEXAGON,line:LINE"></div>
+        <div class="sl" data-k="shpRatio" data-shp-hide="line" data-label="WIDTH / HEIGHT" data-min="0.2" data-max="5" data-step="0.05"></div>
+        <div class="sl" data-k="shpRadius" data-shp-hide="circle line" data-label="CORNER RADIUS" data-unit="%" data-min="0" data-max="100" data-step="1"></div>
+        <div class="ck" data-k="shpFill" data-shp-hide="line" data-label="FILLED"></div>
+        <div class="ck" data-k="shpStroke" data-shp-hide="line" data-label="OUTLINE"></div>
+        <div class="sl" data-k="shpWidth" data-stroke-only data-label="LINE WIDTH" data-unit="MM" data-min="0.2" data-max="20" data-step="0.1"></div>
+        <div class="rd" data-k="shpDash" data-stroke-only data-opts="solid:SOLID,dashed:DASHED,dotted:DOTTED"></div>
+        <div class="sl" data-k="shpDashLen" data-dash-only="dashed" data-label="DASH LENGTH" data-unit="MM" data-min="0.3" data-max="30" data-step="0.1"></div>
+        <div class="sl" data-k="shpGap" data-dash-only="dashed dotted" data-label="GAP" data-unit="MM" data-min="0.2" data-max="30" data-step="0.1"></div>
+        <div class="hint">SIZE (PLACEMENT) IS THE SHAPE'S LONGEST SIDE, OUTLINE INCLUDED.</div>
+      </section>
+
+      <section class="win" data-kind="image"><h2>TRACE</h2>
+        <div class="info" id="imgInfo"></div>
+        <button class="btn" data-act="replaceImg">REPLACE IMAGE</button>
         <canvas id="trace"></canvas>
         <div class="hint">SOURCE:</div>
         <div class="rd" data-k="trSource" data-opts="auto:AUTO,alpha:ALPHA,dark:DARK,light:LIGHT"></div>
@@ -126,13 +160,13 @@
 
       <section class="win"><h2>COLORS</h2>
         <div class="color" data-k="colModel" data-label="MODEL"></div>
-        <div class="color" data-k="colArt" data-label="STAMP"></div>
+        <div class="color" data-k="colArt" data-label="SELECTED STAMP"></div>
       </section>
 
       <section class="win"><h2>OUTPUT</h2>
         <div class="ck" data-k="autoBuild" data-label="AUTO BUILD"></div>
         <button class="btn primary" data-act="build">F5 BUILD</button>
-        <button class="btn primary" data-act="exp3mf" id="exp3mfLabel">F9 EXPORT 3MF (2 COLOR)</button>
+        <button class="btn primary" data-act="exp3mf" id="exp3mfLabel">F9 EXPORT 3MF (COLORS)</button>
         <button class="btn" data-act="expStl">F8 EXPORT STL (MERGED)</button>
         <button class="btn" data-act="expBase">EXPORT STL: BODY ONLY</button>
         <button class="btn" data-act="expStamp">EXPORT STL: STAMP ONLY</button>
@@ -183,6 +217,13 @@
     CLICK A PART TO INCLUDE / EXCLUDE IT FROM THE WORK,
     DEL REMOVES IT (ALSO FROM THE EXPORTED 3MF).
     HOVER A PART TO SEE IT OUTLINED IN THE VIEWPORT.
+    STAMPS: ADD AS MANY AS YOU LIKE - IMAGES (F3),
+    TEXT (ANY GOOGLE FONT, SEARCHABLE) AND SHAPES
+    (CIRCLE, SQUARE, TRIANGLE, PENTAGON, HEXAGON, LINE
+    WITH FILL / OUTLINE, CORNER RADIUS, DASHED OR
+    DOTTED LINES). EACH ONE HAS ITS OWN POSITION,
+    SIZE, MODE AND COLOR. CLICK A ROW OR THE STAMP
+    ITSELF TO EDIT IT; DEL REMOVES IT.
  2. DRAG THE STAMP TO SLIDE IT OVER THE SURFACE, OR
     DOUBLE-CLICK THE MODEL TO DROP IT THERE. USE THE
     FACE BUTTONS / FLIP TO JUMP TO ANOTHER SIDE.
@@ -240,6 +281,15 @@ TRACING (PNG / JPG, AND SVG BY DEFAULT)
 UNITS ARE MILLIMETRES. THE MODEL IS CENTERED ON
 THE BED (Z = 0) WHEN LOADED.</pre>
     <button class="btn" data-act="closeHelp">OK</button>
+  </section>
+</div>
+
+<div id="fontModal" class="overlay" hidden>
+  <section class="win dlg fontdlg"><h2>GOOGLE FONTS</h2>
+    <input id="fontSearch" type="text" placeholder="SEARCH FONTS..." autocomplete="off" spellcheck="false">
+    <div class="hint" id="fontHint"></div>
+    <div id="fontList"></div>
+    <button class="btn" data-act="closeFonts">CANCEL</button>
   </section>
 </div>
 
@@ -333,21 +383,36 @@ const V2 = THREE.Vector2, V3 = THREE.Vector3;
 /* ============================================================
    PARAMETERS
    ============================================================ */
+// P is the editing buffer: global keys (colModel, autoBuild) plus the keys of the ACTIVE stamp,
+// which are copied in when a stamp is activated and written back on every change
 const P = {
   trSource: 'auto', threshold: 128, invert: false, smooth: 0.8, curve: 0, despeckle: 6, res: 512, svgVector: false,
   size: 30, rot: 0, mirror: false, follow: true, conform: true,
   mode: 'relief', relief: 1.2, sink: 0.6, depth: 1.0, through: false, inlay: 0.6,
   colModel: '#d6d6d6', colArt: '#ff7a00',
+  txtText: 'STAMP', txtFont: 'Bebas Neue', txtWeight: 400, txtItalic: false, txtSpacing: 0, txtLine: 100, txtAlign: 'center',
+  shpType: 'circle', shpRatio: 1, shpRadius: 0, shpFill: true, shpStroke: false, shpWidth: 1.2, shpDash: 'solid', shpDashLen: 3, shpGap: 1.5,
   autoBuild: true,
 };
+const GLOBAL_KEYS = new Set(['colModel', 'autoBuild']);
+const STAMP_KEYS = Object.keys(P).filter(k => !GLOBAL_KEYS.has(k));
+const STAMP_DEFAULTS = Object.fromEntries(STAMP_KEYS.map(k => [k, P[k]]));
+// text / shapes are drawn on a canvas and traced; these trace settings suit crisp generated art
+const GEN_TRACE = { trSource: 'alpha', threshold: 128, invert: false, smooth: 0.45, curve: 0, despeckle: 1, res: 1280, svgVector: false };
 const TRACE_KEYS = new Set(['trSource', 'threshold', 'invert', 'smooth', 'curve', 'despeckle', 'res', 'svgVector']);
+const TEXT_KEYS = new Set(['txtText', 'txtFont', 'txtWeight', 'txtItalic', 'txtSpacing', 'txtLine', 'txtAlign']);
+const SHAPE_KEYS = new Set(['shpType', 'shpRatio', 'shpRadius', 'shpFill', 'shpStroke', 'shpWidth', 'shpDash', 'shpDashLen', 'shpGap']);
 const SWATCHES = ['#111111', '#f2f2f2', '#8a8a8a', '#d6d6d6', '#c8102e', '#ff7a00', '#ffd21f', '#2fa84f', '#2a62d4', '#7d3cc8', '#ff6fae', '#6b4a2b'];
 
 let model = null;     // { geom, brush, name, size, diag }
-let artSrc = null;    // { kind: 'svg'|'raster', name, text?, img? }
+// a stamp: { id, kind: 'image'|'text'|'shape', name, params, place, src, art, mesh }
+// art / artSrc / place / artMesh below always point at the ACTIVE stamp's fields
+let stamps = [], activeStamp = null, stampUid = 0;
+const stampRegistry = new Map(); // deleted stamps stay here so undo can bring them back
+let artSrc = null;    // { kind: 'svg'|'raster'|'gen', name, text?, img? }
 let art = null;       // { shapes: [{ outer: V2[], holes: V2[][] }], w, h, cache }
-let result = null;    // { base, stamp, brush, mode }
-const place = { p: null, n: new V3(0, 0, 1), ref: new V3(0, 1, 0) };
+let result = null;    // { base, bodies: [{ geom, color, stamp }], brushes: [{ stamp, geom, mode }] }
+let place = { p: null, n: new V3(0, 0, 1), ref: new V3(0, 1, 0) };
 let dragging = false, buildTimer = 0, retraceTimer = 0, retraceToken = 0;
 
 /* ============================================================
@@ -370,9 +435,9 @@ function updateHud() {
   if (art) parts.push(`${fmt(art.w * P.size)}x${fmt(art.h * P.size)}MM`, `ROT ${fmt(P.rot, 0)}\u00b0`);
   if (place.p && art) parts.push(`@ ${fmt(place.p.x)},${fmt(place.p.y)},${fmt(place.p.z)}`);
   $('#hudL').textContent = parts.join('  \u00b7  ');
-  $('#vpMsg').hidden = !!model && !!art;
+  $('#vpMsg').hidden = !!model && stamps.length > 0;
   if (!model) $('#vpMsg').innerHTML = 'NO MODEL LOADED<br>PRESS F2 OR DROP AN .STL';
-  else if (!art) $('#vpMsg').innerHTML = 'MODEL OK<br>NOW LOAD AN IMAGE (F3)';
+  else if (!stamps.length) $('#vpMsg').innerHTML = 'MODEL OK<br>ADD AN IMAGE (F3), TEXT OR SHAPE';
   $('#viewport').classList.toggle('placing', !!model && !!art);
 }
 
@@ -429,22 +494,25 @@ function setGrid(extent) {
 setGrid(100);
 
 const matModel = new THREE.MeshStandardMaterial({ color: P.colModel, flatShading: true, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide });
-const matArt = new THREE.MeshStandardMaterial({ color: P.colArt, flatShading: true, roughness: 0.45, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-const matGhost = new THREE.MeshStandardMaterial({ color: P.colArt, flatShading: true, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+const stampMaterials = color => ({
+  solid: new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.45, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
+  ghost: new THREE.MeshStandardMaterial({ color, flatShading: true, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
+});
 
 const modelMesh = new THREE.Mesh(new THREE.BufferGeometry(), matModel);
-const artMesh = new THREE.Mesh(new THREE.BufferGeometry(), matArt);
+// stand-in when no stamp exists, so raycasts against artMesh are always valid
+const noStampMesh = new THREE.Mesh(new THREE.BufferGeometry(), stampMaterials(P.colArt).solid);
+let artMesh = noStampMesh;
+const stampGroup = new THREE.Group();   // one preview mesh per stamp
 const baseMesh = new THREE.Mesh(new THREE.BufferGeometry(), matModel);
-const stampMesh = new THREE.Mesh(new THREE.BufferGeometry(), matArt);
-const resultGroup = new THREE.Group();
-resultGroup.add(baseMesh, stampMesh);
-modelMesh.visible = artMesh.visible = resultGroup.visible = false;
-artMesh.renderOrder = 2;
+const resultGroup = new THREE.Group();  // built body + one mesh per stamp body
+resultGroup.add(baseMesh);
+modelMesh.visible = noStampMesh.visible = resultGroup.visible = false;
 // outline of the part hovered in the parts list
 const highlight = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xff8400, wireframe: true, transparent: true, opacity: 0.45, depthTest: false }));
 highlight.visible = false;
 highlight.renderOrder = 5;
-scene.add(modelMesh, artMesh, resultGroup, highlight);
+scene.add(modelMesh, stampGroup, resultGroup, highlight);
 
 function layoutViewport() {
   const r = $('#vpSlot').getBoundingClientRect();
@@ -500,7 +568,7 @@ function setParts(list, name, src = null) {
   modelName = name;
   src3mf = src;
   removedSrcs = [];
-  $('#exp3mfLabel').textContent = src ? 'F9 EXPORT 3MF (KEEP PROJECT)' : 'F9 EXPORT 3MF (2 COLOR)';
+  $('#exp3mfLabel').textContent = src ? 'F9 EXPORT 3MF (KEEP PROJECT)' : 'F9 EXPORT 3MF (COLORS)';
   const tris = parts.reduce((s, p) => s + triCount(p.geom), 0);
   log(`LOADED ${name}: ${parts.length} PART${parts.length === 1 ? '' : 'S'}, ${tris.toLocaleString()} TRIS`);
   renderParts();
@@ -515,7 +583,7 @@ function rebuildModel(fresh) {
     model = null;
     modelMesh.visible = false;
     $('#stlInfo').textContent = parts.length ? `${modelName}\nNO PARTS SELECTED` : 'NO MODEL';
-    markDirty();
+    markDirty('all');
     return;
   }
   let geom = on.length === 1 ? on[0].geom.clone() : mergeGeometries(on.map(p => p.geom));
@@ -549,12 +617,12 @@ function rebuildModel(fresh) {
       log('BIG MESH: AUTO BUILD OFF. PRESS F5 TO BUILD.');
     }
     fitCamera();
-    if (art) placeDefault(true);
-  } else if (place.p) {
-    // keep the stamp on the same spot of the geometry after recentering
-    place.p.add(modelOffset).sub(prevOffset);
+    for (const s of stamps) if (s.art) withStamp(s, () => placeDefault(true));
+  } else {
+    // keep each stamp on the same spot of the geometry after recentering
+    for (const s of stamps) s.place.p?.add(modelOffset).sub(prevOffset);
   }
-  markDirty();
+  markDirty('all');
 }
 
 function renderParts() {
@@ -947,9 +1015,9 @@ function buildShapes(loops, minArea) {
   return { shapes, w: sz.x * k, h: sz.y * k, cache: {} };
 }
 
-function rasterShapes(img, isSvg) {
+function rasterShapes(img, isSvg, prm = P) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-  const sc = P.res / Math.max(iw, ih);
+  const sc = prm.res / Math.max(iw, ih);
   const w = Math.max(1, Math.round(iw * sc)), h = Math.max(1, Math.round(ih * sc)), pad = 2;
   const W = w + pad * 2, H = h + pad * 2;
   const cv = document.createElement('canvas');
@@ -961,8 +1029,8 @@ function rasterShapes(img, isSvg) {
 
   let hasAlpha = false;
   if (!isSvg) for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { hasAlpha = true; break; }
-  const src = P.trSource !== 'auto' ? P.trSource : (!isSvg && hasAlpha ? 'alpha' : 'dark');
-  const thr = P.threshold;
+  const src = prm.trSource !== 'auto' ? prm.trSource : (!isSvg && hasAlpha ? 'alpha' : 'dark');
+  const thr = prm.threshold;
   const mask = new Uint8Array(W * H);
   for (let y = pad; y < pad + h; y++) for (let x = pad; x < pad + w; x++) {
     const i = y * W + x, a = d[i * 4 + 3];
@@ -971,10 +1039,10 @@ function rasterShapes(img, isSvg) {
     if (src === 'alpha') on = a >= thr;
     else if (src === 'dark') on = (lum * a + 255 * (255 - a)) / 255 < thr;
     else on = lum * a / 255 > thr;
-    mask[i] = (on !== P.invert) ? 1 : 0;
+    mask[i] = (on !== prm.invert) ? 1 : 0;
   }
-  const loops = traceMask(mask, W, H).map(l => simplifyLoop(l, P.smooth, P.curve)).filter(l => l.length >= 3);
-  return { built: buildShapes(loops, P.despeckle), src };
+  const loops = traceMask(mask, W, H).map(l => simplifyLoop(l, prm.smooth, prm.curve)).filter(l => l.length >= 3);
+  return { built: buildShapes(loops, prm.despeckle), src };
 }
 
 function vectorShapes(text) {
@@ -992,49 +1060,218 @@ function vectorShapes(text) {
   return buildShapes(loops, 0);
 }
 
-// live while dragging trace sliders: at most one retrace per frame
+// live while dragging sliders / typing: at most one retrace per frame
 function retraceSoon() {
   if (retraceTimer) return;
   retraceTimer = requestAnimationFrame(() => { retraceTimer = 0; retrace(); });
 }
 
-async function retrace() {
-  if (!artSrc) return;
-  const token = ++retraceToken;
+// rebuild a stamp's outlines from its source (image, text or shape)
+async function retrace(s = activeStamp) {
+  if (!s) return;
+  const token = s.traceToken = (s.traceToken || 0) + 1;
+  const prm = { ...s.params };
   try {
     let built = null, how = '';
-    if (artSrc.kind === 'svg' && P.svgVector) {
-      built = vectorShapes(artSrc.text);
-      how = 'VECTOR';
-      if (!built) log('SVG HAS NO FILLED PATHS - FALLING BACK TO TRACE');
+    if (s.kind === 'image') {
+      const src = s.src;
+      if (src.kind === 'svg' && prm.svgVector) {
+        built = vectorShapes(src.text);
+        how = 'VECTOR';
+        if (!built) log('SVG HAS NO FILLED PATHS - FALLING BACK TO TRACE');
+      }
+      if (!built) {
+        if (src.kind === 'svg' && !src.img) src.img = await svgToImage(src.text);
+        if (token !== s.traceToken) return;
+        const r = rasterShapes(src.img, src.kind === 'svg', prm);
+        built = r.built;
+        how = 'TRACE/' + r.src.toUpperCase();
+      }
+    } else {
+      const cv = s.kind === 'text' ? await renderText(prm) : renderShape(prm);
+      if (token !== s.traceToken) return;
+      built = cv ? rasterShapes(cv, false, prm).built : null;
+      how = s.kind.toUpperCase();
     }
-    if (!built) {
-      if (artSrc.kind === 'svg' && !artSrc.img) artSrc.img = await svgToImage(artSrc.text);
-      if (token !== retraceToken) return;
-      const r = rasterShapes(artSrc.img, artSrc.kind === 'svg');
-      built = r.built;
-      how = 'TRACE/' + r.src.toUpperCase();
-    }
-    if (token !== retraceToken) return;
-    if (!built) {
-      art = null;
-      $('#traceInfo').textContent = 'NOTHING TRACED - ADJUST THRESHOLD / INVERT';
+    if (token !== s.traceToken) return;
+    const first = !s.art;
+    s.art = built;
+    if (s === activeStamp) {
+      art = built;
+      if (built) {
+        let pts = 0, holes = 0;
+        for (const sh of built.shapes) { pts += sh.outer.length; holes += sh.holes.length; sh.holes.forEach(h => pts += h.length); }
+        $('#traceInfo').textContent = `${how}: ${built.shapes.length} SHAPES, ${holes} HOLES, ${pts} PTS`;
+      } else {
+        $('#traceInfo').textContent = s.kind === 'image' ? 'NOTHING TRACED - ADJUST THRESHOLD / INVERT' : 'NOTHING TO STAMP';
+      }
       drawPreview();
-      markDirty();
-      return;
     }
-    const first = !art;
-    art = built;
-    let pts = 0, holes = 0;
-    for (const s of art.shapes) { pts += s.outer.length; holes += s.holes.length; s.holes.forEach(h => pts += h.length); }
-    $('#traceInfo').textContent = `${how}: ${art.shapes.length} SHAPES, ${holes} HOLES, ${pts} PTS`;
-    drawPreview();
-    if (first && model && !place.p) placeDefault(true);
-    markDirty();
+    if (built && first && model && !s.place.p) withStamp(s, () => placeDefault(!s.placedFrom));
+    renderStampList();
+    markDirty(s);
   } catch (e) {
     console.error(e);
-    log('IMAGE ERROR: ' + e.message, 'err');
+    log(`${s.kind.toUpperCase()} ERROR: ${e.message}`, 'err');
   }
+}
+
+/* ---------- Google Fonts (catalog from Fontsource, files from Google's CSS API) ---------- */
+const SUGGESTED_FONTS = ['Bebas Neue', 'Anton', 'Oswald', 'Montserrat', 'Roboto', 'Poppins', 'Archivo Black', 'Black Ops One',
+  'Russo One', 'Bungee', 'Righteous', 'Audiowide', 'Orbitron', 'Press Start 2P', 'VT323', 'Silkscreen', 'Rubik Mono One',
+  'Alfa Slab One', 'Bangers', 'Lobster', 'Pacifico', 'Permanent Marker', 'Great Vibes', 'Dancing Script', 'Cinzel',
+  'Playfair Display', 'Special Elite', 'Creepster', 'Monoton', 'Fredoka', 'Shrikhand', 'Titan One'];
+let fontCatalog = null, fontCatalogLoading = null;
+function loadFontCatalog() {
+  if (fontCatalog) return Promise.resolve(fontCatalog);
+  return fontCatalogLoading || (fontCatalogLoading = fetch('https://api.fontsource.org/v1/fonts?type=google')
+    .then(r => r.json())
+    .then(list => (fontCatalog = list.map(f => ({ family: f.family, weights: f.weights, italic: f.styles.includes('italic'), category: f.category }))))
+    .catch(e => { log('FONT LIST UNAVAILABLE (' + e.message + ') - SUGGESTIONS ONLY', 'err'); fontCatalogLoading = null; return null; }));
+}
+const fontInfo = family => fontCatalog?.find(f => f.family === family) || null;
+const fontWeights = family => fontInfo(family)?.weights || [400, 700];
+
+// fetch Google's CSS and register its faces under our own alias (keeps previews and real fonts apart)
+const fontFaces = new Map();
+async function registerGoogleFont(alias, query) {
+  if (fontFaces.has(alias)) return fontFaces.get(alias);
+  const job = (async () => {
+    const css = await (await fetch('https://fonts.googleapis.com/css2?' + query)).text();
+    for (const block of css.match(/@font-face\s*{[^}]*}/g) || []) {
+      const url = /url\(([^)]+)\)/.exec(block)?.[1];
+      if (!url) continue;
+      const desc = {
+        style: /font-style:\s*([^;]+)/.exec(block)?.[1] || 'normal',
+        weight: /font-weight:\s*([^;]+)/.exec(block)?.[1] || '400',
+      };
+      const range = /unicode-range:\s*([^;]+)/.exec(block)?.[1];
+      if (range) desc.unicodeRange = range;
+      document.fonts.add(new FontFace(alias, `url(${url})`, desc));
+    }
+  })();
+  fontFaces.set(alias, job);
+  job.catch(() => fontFaces.delete(alias));
+  return job;
+}
+const famQuery = f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+');
+
+async function ensureFont(family, weight, italic, sample) {
+  await loadFontCatalog(); // knows which weights / italics exist, so the CSS request is valid
+  const alias = `stamp-${family}`;
+  const info = fontInfo(family);
+  const ws = info?.weights || [weight];
+  const tuples = [];
+  for (const it of info?.italic ? [0, 1] : [0]) for (const w of ws) tuples.push(`${it},${w}`);
+  const q = info ? `${famQuery(family)}:ital,wght@${tuples.join(';')}&display=block` : `${famQuery(family)}&display=block`;
+  await registerGoogleFont(alias, q);
+  await document.fonts.load(`${italic ? 'italic ' : ''}${weight} 100px "${alias}"`, sample || 'A');
+  return alias;
+}
+async function previewFont(family) {
+  const alias = `pv-${family}`;
+  try {
+    await registerGoogleFont(alias, `${famQuery(family)}&text=${encodeURIComponent(family)}`);
+    await document.fonts.load(`100px "${alias}"`, family);
+  } catch { /* the list just keeps the UI font */ }
+  return alias;
+}
+
+// text -> canvas (black on transparent), sized to fit
+async function renderText(prm) {
+  const lines = String(prm.txtText || '').split('\n');
+  if (!lines.some(l => l.trim())) return null;
+  const alias = await ensureFont(prm.txtFont, prm.txtWeight, prm.txtItalic, lines.join(''));
+  const fs = 220, lineH = fs * prm.txtLine / 100, pad = Math.ceil(fs * 0.5);
+  const font = `${prm.txtItalic ? 'italic ' : ''}${prm.txtWeight} ${fs}px "${alias}"`;
+  const cv = document.createElement('canvas');
+  let ctx = cv.getContext('2d');
+  const setup = () => {
+    ctx.font = font;
+    ctx.letterSpacing = `${prm.txtSpacing / 100 * fs}px`;
+    ctx.textBaseline = 'middle';
+  };
+  setup();
+  const widths = lines.map(l => ctx.measureText(l).width);
+  const maxW = Math.max(...widths, 1);
+  cv.width = Math.min(8000, Math.ceil(maxW + pad * 2));
+  cv.height = Math.min(8000, Math.ceil(lineH * lines.length + pad * 2));
+  ctx = cv.getContext('2d');
+  setup();
+  ctx.fillStyle = '#000';
+  lines.forEach((l, i) => {
+    const x = prm.txtAlign === 'left' ? pad : prm.txtAlign === 'right' ? pad + maxW - widths[i] : pad + (maxW - widths[i]) / 2;
+    ctx.fillText(l, x, pad + lineH * (i + 0.5));
+  });
+  return cv;
+}
+
+// basic shapes -> canvas. Line width / dashes are millimetres of the final stamp,
+// so they are converted to drawing units from the stamp size
+function renderShape(prm) {
+  const t = prm.shpType, isLine = t === 'line';
+  const fill = !isLine && prm.shpFill, stroke = isLine || prm.shpStroke;
+  if (!fill && !stroke) return null;
+  const S = Math.max(prm.size, 0.1);
+  const k = Math.min(0.45, prm.shpWidth / S);
+  const w = stroke ? k / (1 - k) : 0;              // stroke width, shape extent = 1
+  const r = Math.max(0.05, prm.shpRatio);
+  const bw = isLine ? 1 : r >= 1 ? 1 : r, bh = isLine ? 0 : r >= 1 ? 1 / r : 1;
+  const E = Math.max(bw, bh) + w;                  // total extent incl. stroke == stamp size
+  const mm = v => v / S * E;                       // millimetres -> drawing units
+  const path = new Path2D();
+  if (isLine) {
+    path.moveTo(-0.5, 0);
+    path.lineTo(0.5, 0);
+  } else if (t === 'circle') {
+    path.ellipse(0, 0, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+  } else {
+    const n = { square: 4, triangle: 3, pentagon: 5, hexagon: 6 }[t] || 4;
+    const a0 = -Math.PI / 2 + (n % 2 ? 0 : Math.PI / n);
+    let v = Array.from({ length: n }, (_, i) => [Math.cos(a0 + i * 2 * Math.PI / n), Math.sin(a0 + i * 2 * Math.PI / n)]);
+    const xs = v.map(p => p[0]), ys = v.map(p => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    v = v.map(([x, y]) => [((x - x0) / (x1 - x0) - 0.5) * bw, ((y - y0) / (y1 - y0) - 0.5) * bh]);
+    // corner radius: % of the largest radius every corner can take
+    let rMax = Infinity;
+    for (let i = 0; i < n; i++) {
+      const p = v[i], a = v[(i + n - 1) % n], b = v[(i + 1) % n];
+      const ua = [a[0] - p[0], a[1] - p[1]], ub = [b[0] - p[0], b[1] - p[1]];
+      const la = Math.hypot(...ua), lb = Math.hypot(...ub);
+      const ang = Math.acos(Math.max(-1, Math.min(1, (ua[0] * ub[0] + ua[1] * ub[1]) / (la * lb))));
+      rMax = Math.min(rMax, Math.min(la, lb) / 2 * Math.tan(ang / 2));
+    }
+    const rad = rMax * prm.shpRadius / 100;
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    const start = mid(v[n - 1], v[0]);
+    path.moveTo(...start);
+    for (let i = 0; i < n; i++) path.arcTo(...v[i], ...v[(i + 1) % n], rad);
+    path.closePath();
+  }
+  const C = 1400, pad = 16;
+  const sc = (C - pad * 2) / E;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil((bw + w) * sc + pad * 2);
+  cv.height = Math.max(8, Math.ceil((bh + w) * sc + pad * 2));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(sc, 0, 0, sc, cv.width / 2, cv.height / 2);
+  ctx.fillStyle = ctx.strokeStyle = '#000';
+  if (fill) ctx.fill(path);
+  if (stroke) {
+    ctx.lineWidth = w;
+    ctx.lineJoin = 'round';
+    if (prm.shpDash === 'dotted') {
+      ctx.lineCap = 'round';
+      ctx.setLineDash([0.0001, w + mm(prm.shpGap)]);
+    } else if (prm.shpDash === 'dashed') {
+      ctx.lineCap = 'butt';
+      ctx.setLineDash([mm(prm.shpDashLen), mm(prm.shpGap)]);
+    } else {
+      ctx.lineCap = isLine ? 'round' : 'butt';
+    }
+    ctx.stroke(path);
+  }
+  return cv;
 }
 
 function drawPreview() {
@@ -1048,7 +1285,7 @@ function drawPreview() {
     ctx.fillStyle = '#6e2e00';
     ctx.font = `${20 * dpr}px VT323, monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(artSrc ? 'NOTHING TRACED' : 'NO IMAGE', cw / 2, ch / 2 + 6 * dpr);
+    ctx.fillText(activeStamp ? 'NOTHING TRACED' : 'NO STAMP', cw / 2, ch / 2 + 6 * dpr);
     return;
   }
   const s = 0.9 * Math.min(cw / art.w, ch / art.h);
@@ -1234,21 +1471,32 @@ function buildHeights() {
   return [0.6, P.inlay];
 }
 
+// the ACTIVE stamp can be edited; the build needs at least one stamp that is traced and placed
 const ready = () => !!(model && art && place.p);
+const stampReady = s => !!(model && s.art && s.place.p);
+const anyReady = () => stamps.some(stampReady);
 
 function showPreview() {
   modelMesh.visible = !!model;
-  artMesh.visible = ready();
+  for (const s of stamps) s.mesh.visible = stampReady(s);
+  stampGroup.visible = true;
   resultGroup.visible = false;
 }
 
-function updatePreview() {
-  if (!ready()) { showPreview(); updateHud(); return; }
+// rebuild the preview mesh of the stamp currently swapped in
+function updatePreviewMesh() {
+  if (!ready()) return;
   const [ht, hb] = previewHeights();
   const g = brushGeometry(ht, hb);
   artMesh.geometry.dispose();
   artMesh.geometry = g;
-  artMesh.material = P.mode === 'cutout' ? matGhost : matArt;
+  artMesh.material = P.mode === 'cutout' ? artMesh.userData.mats.ghost : artMesh.userData.mats.solid;
+}
+
+function updatePreview(target) {
+  if (target === 'all') for (const s of stamps) withStamp(s, updatePreviewMesh);
+  else if (target && target !== activeStamp) withStamp(target, updatePreviewMesh);
+  else updatePreviewMesh();
   showPreview();
   updateHud();
 }
@@ -1256,20 +1504,168 @@ function updatePreview() {
 function clearResult() {
   if (!result) return;
   if (result.base !== model?.geom) result.base.dispose();
-  result.stamp?.dispose();
+  for (const b of result.bodies) b.geom.dispose();
   result = null;
   baseMesh.geometry = new THREE.BufferGeometry();
-  stampMesh.geometry = new THREE.BufferGeometry();
+  for (const m of resultGroup.children.slice()) if (m !== baseMesh) { resultGroup.remove(m); m.material.dispose(); }
 }
 
-function markDirty() {
+// target: undefined = active stamp, a stamp, or 'all' (model changed / restore)
+function markDirty(target) {
   buildSeq++;
   cancelCSG();
   clearResult();
-  $('#buildInfo').textContent = ready() ? 'PREVIEW (NOT BUILT)' : 'NOT BUILT';
-  updatePreview();
+  $('#buildInfo').textContent = anyReady() ? 'PREVIEW (NOT BUILT)' : 'NOT BUILT';
+  updatePreview(target);
   scheduleBuild();
   noteChange();
+}
+
+/* ---------- stamps (layers) ---------- */
+function newStampObject(kind, name, params, src) {
+  const id = ++stampUid;
+  const mats = stampMaterials(params.colArt);
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mats.solid);
+  mesh.userData = { mats, stampId: id };
+  mesh.renderOrder = 2;
+  mesh.visible = false;
+  stampGroup.add(mesh);
+  const s = { id, kind, name, params: { ...params }, src, art: null, mesh, place: { p: null, n: new V3(0, 0, 1), ref: new V3(0, 1, 0) } };
+  stampRegistry.set(id, s);
+  return s;
+}
+
+// swap a stamp into the editing globals for the duration of fn (no UI changes)
+function withStamp(s, fn) {
+  if (!s || s === activeStamp) return fn();
+  const saved = { P: {}, place, art, artSrc, artMesh };
+  for (const k of STAMP_KEYS) saved.P[k] = P[k];
+  Object.assign(P, s.params);
+  place = s.place; art = s.art; artSrc = s.src; artMesh = s.mesh;
+  const prevSwapped = swappedStamp;
+  swappedStamp = s;
+  try { return fn(); }
+  finally {
+    swappedStamp = prevSwapped;
+    Object.assign(P, saved.P);
+    place = saved.place; art = saved.art; artSrc = saved.artSrc; artMesh = saved.artMesh;
+  }
+}
+let swappedStamp = null;
+const curStamp = () => swappedStamp || activeStamp;
+
+function activateStamp(s) {
+  if (s) {
+    activeStamp = s;
+    Object.assign(P, s.params);
+    place = s.place; art = s.art; artSrc = s.src; artMesh = s.mesh;
+  } else {
+    activeStamp = null;
+    place = { p: null, n: new V3(0, 0, 1), ref: new V3(0, 1, 0) };
+    art = null; artSrc = null; artMesh = noStampMesh;
+  }
+  for (const k of STAMP_KEYS) ui[k]?.set(P[k]);
+  $('#txtInput').value = P.txtText;
+  syncModeGroups();
+  syncKindPanels();
+  renderWeights();
+  updateImgInfo();
+  drawPreview();
+  renderStampList();
+  updateHud();
+}
+
+function addStamp(kind, name, params, src) {
+  const s = newStampObject(kind, name, params, src);
+  // a new stamp starts where the active one is (same face), otherwise at the default spot
+  if (activeStamp?.place.p) {
+    s.place.p = activeStamp.place.p.clone();
+    s.place.n = activeStamp.place.n.clone();
+    s.place.ref = activeStamp.place.ref.clone();
+    s.placedFrom = true;
+  }
+  stamps.push(s);
+  stampSelected = true;
+  activateStamp(s);
+  log(`ADDED ${kind.toUpperCase()} STAMP`);
+  retrace(s);
+  return s;
+}
+
+const freshParams = kind => ({
+  ...STAMP_DEFAULTS,
+  ...(kind === 'image' ? {} : GEN_TRACE),
+  colArt: P.colArt,
+  ...(activeStamp ? { size: activeStamp.params.size, mode: activeStamp.params.mode } : {}),
+});
+
+function addTextStamp() { addStamp('text', 'TEXT', { ...freshParams('text'), size: Math.max(P.size, 30) }); }
+function addShapeStamp() { addStamp('shape', 'SHAPE', freshParams('shape')); }
+
+function removeStamp(s) {
+  const i = stamps.indexOf(s);
+  if (i < 0) return;
+  stamps.splice(i, 1);
+  s.mesh.visible = false;  // kept (with its geometry) in the registry for undo
+  log('DELETED STAMP ' + stampLabel(s));
+  activateStamp(stamps[Math.min(i, stamps.length - 1)] || null);
+  markDirty();
+}
+
+function duplicateStamp(s) {
+  const d = newStampObject(s.kind, s.name, s.params, s.src);
+  d.art = s.art;
+  d.place = { p: s.place.p?.clone() || null, n: s.place.n.clone(), ref: s.place.ref.clone() };
+  stamps.splice(stamps.indexOf(s) + 1, 0, d);
+  activateStamp(d);
+  log('DUPLICATED ' + stampLabel(s));
+  markDirty(d);
+}
+
+const stampLabel = s => s.kind === 'text' ? `"${String(s.params.txtText).split('\n')[0].slice(0, 18)}"`
+  : s.kind === 'shape' ? s.params.shpType.toUpperCase() : s.name;
+
+function renderStampList() {
+  const el = $('#stampList');
+  if (!stamps.length) { el.innerHTML = '<div class="hint">NO STAMPS YET - ADD AN IMAGE, TEXT OR SHAPE</div>'; return; }
+  el.innerHTML = stamps.map(s => `<div class="part stamp-row${s === activeStamp ? ' sel' : ''}" data-sid="${s.id}">
+      <span class="pbox">${s === activeStamp ? '(*)' : '( )'}</span>
+      <span class="chip" style="background:${s.params.colArt}"></span>
+      <span class="pname">${s.kind === 'image' ? 'IMG' : s.kind === 'text' ? 'TXT' : 'SHP'} ${stampLabel(s).replace(/</g, '&lt;')}</span>
+      <em>${s.params.mode.slice(0, 3).toUpperCase()}</em>
+      <button class="pdel" data-sdup="${s.id}" title="DUPLICATE">DUP</button>
+      <button class="pdel" data-sdel="${s.id}" title="DELETE STAMP">DEL</button></div>`).join('');
+}
+
+$('#stampList').addEventListener('click', e => {
+  const byId = id => stamps.find(s => s.id === +id);
+  const del = e.target.closest('[data-sdel]');
+  if (del) return removeStamp(byId(del.dataset.sdel));
+  const dup = e.target.closest('[data-sdup]');
+  if (dup) return duplicateStamp(byId(dup.dataset.sdup));
+  const row = e.target.closest('[data-sid]');
+  if (row) { stampSelected = true; activateStamp(byId(row.dataset.sid)); }
+});
+
+// show only the panels that apply to the active stamp's kind
+function syncKindPanels() {
+  const kind = activeStamp?.kind || 'none';
+  $$('[data-kind]').forEach(el => el.hidden = !el.dataset.kind.split(' ').includes(kind));
+  const t = P.shpType;
+  $$('[data-shp-hide]').forEach(el => el.hidden = el.dataset.shpHide.split(' ').includes(t));
+  $$('[data-dash-only]').forEach(el => el.hidden = !(P.shpStroke || t === 'line') || !el.dataset.dashOnly.split(' ').includes(P.shpDash));
+  $$('[data-stroke-only]').forEach(el => el.hidden = !(P.shpStroke || t === 'line'));
+}
+
+// weight buttons depend on what the chosen font offers
+function renderWeights() {
+  const el = $('#weightRow');
+  if (!el) return;
+  const ws = fontWeights(P.txtFont);
+  el.innerHTML = ws.map(w => `<button type="button" class="opt${w === +P.txtWeight ? ' on' : ''}" data-w="${w}">${w === +P.txtWeight ? '(*)' : '( )'} ${w}</button>`).join('');
+  $('#fontName').textContent = P.txtFont.toUpperCase();
+  const ital = $('[data-k="txtItalic"]');
+  if (ital) ital.hidden = !!fontInfo(P.txtFont) && !fontInfo(P.txtFont).italic;
 }
 
 /* ---------- undo / redo ----------
@@ -1278,18 +1674,29 @@ const history = [];
 let histIndex = -1, histTimer = 0, restoring = false;
 const HIST_SKIP = new Set(['autoBuild']);
 
+const placeToArr = pl => pl.p ? { p: pl.p.toArray(), n: pl.n.toArray(), ref: pl.ref.toArray() } : null;
+function placeFromArr(pl, a) {
+  if (!a) { pl.p = null; return; }
+  pl.p = new V3().fromArray(a.p);
+  pl.n = new V3().fromArray(a.n);
+  pl.ref = new V3().fromArray(a.ref);
+}
+function setStampColor(s) {
+  s.mesh.userData.mats.solid.color.set(s.params.colArt);
+  s.mesh.userData.mats.ghost.color.set(s.params.colArt);
+}
+
 function snapshot() {
-  const p = {};
-  for (const k of Object.keys(P)) if (!HIST_SKIP.has(k)) p[k] = P[k];
   return {
-    P: p,
-    place: place.p ? { p: place.p.toArray(), n: place.n.toArray(), ref: place.ref.toArray() } : null,
+    G: { colModel: P.colModel },
+    stamps: stamps.map(s => ({ id: s.id, params: { ...s.params }, place: placeToArr(s.place) })),
+    active: activeStamp?.id ?? null,
     ids: parts.map(x => x.uid),
     on: parts.map(x => x.on),
     removed: removedSrcs.slice(),
   };
 }
-const snapKey = s => JSON.stringify([s.P, s.place, s.ids, s.on]);
+const snapKey = s => JSON.stringify([s.G, s.stamps, s.active, s.ids, s.on]);
 
 function commitHistory() {
   clearTimeout(histTimer);
@@ -1312,32 +1719,35 @@ function noteChange() {
   }, 350);
 }
 
-function restore(s) {
+const REGEN_KEYS = [...TRACE_KEYS, ...TEXT_KEYS, ...SHAPE_KEYS];
+function restore(snap) {
   restoring = true;
   try {
-    const traceChanged = [...TRACE_KEYS].some(k => P[k] !== s.P[k]);
-    const partsChanged = JSON.stringify([s.ids, s.on]) !== JSON.stringify([parts.map(x => x.uid), parts.map(x => x.on)]);
-    Object.assign(P, s.P);
-    for (const k of Object.keys(s.P)) ui[k]?.set(P[k]);
-    syncModeGroups();
+    P.colModel = snap.G.colModel;
+    ui.colModel.set(P.colModel);
     matModel.color.set(P.colModel);
-    matArt.color.set(P.colArt);
-    matGhost.color.set(P.colArt);
+    const partsChanged = JSON.stringify([snap.ids, snap.on]) !== JSON.stringify([parts.map(x => x.uid), parts.map(x => x.on)]);
     if (partsChanged) {
-      parts = s.ids.map(id => partRegistry.get(id)).filter(Boolean);
-      parts.forEach((x, i) => x.on = s.on[i]);
-      removedSrcs = s.removed.slice();
+      parts = snap.ids.map(id => partRegistry.get(id)).filter(Boolean);
+      parts.forEach((x, i) => x.on = snap.on[i]);
+      removedSrcs = snap.removed.slice();
       renderParts();
       rebuildModel(false);
     }
-    if (s.place) {
-      place.p = new V3().fromArray(s.place.p);
-      place.n = new V3().fromArray(s.place.n);
-      place.ref = new V3().fromArray(s.place.ref);
-    } else place.p = null;
-    drawPreview();
-    if (traceChanged) retrace();
-    markDirty();
+    const before = stamps;
+    stamps = snap.stamps.map(x => stampRegistry.get(x.id)).filter(Boolean);
+    for (const x of snap.stamps) {
+      const s = stampRegistry.get(x.id);
+      if (!s) continue;
+      const regen = REGEN_KEYS.some(k => s.params[k] !== x.params[k]) || (s.kind === 'shape' && s.params.size !== x.params.size);
+      s.params = { ...x.params };
+      placeFromArr(s.place, x.place);
+      setStampColor(s);
+      if (regen) retrace(s);
+    }
+    for (const s of before) if (!stamps.includes(s)) s.mesh.visible = false;
+    activateStamp(stampRegistry.get(snap.active) && stamps.includes(stampRegistry.get(snap.active)) ? stampRegistry.get(snap.active) : stamps[0] || null);
+    markDirty('all');
   } finally {
     restoring = false;
   }
@@ -1369,7 +1779,7 @@ addEventListener('pointerup', () => { if (holding) { holding = false; scheduleBu
 
 function scheduleBuild() {
   clearTimeout(buildTimer);
-  if (P.autoBuild && !dragging && !holding && ready()) buildTimer = setTimeout(() => buildAsync(), 400);
+  if (P.autoBuild && !dragging && !holding && anyReady()) buildTimer = setTimeout(() => buildAsync(), 400);
 }
 
 /* ---------- CSG off the main thread ----------
@@ -1398,7 +1808,12 @@ self.onmessage = ({ data }) => {
     const local = {};
     for (const [k, d] of Object.entries(data.inputs)) local[k] = brushFrom(d);
     const get = k => local[k] || cache.get(k);
-    const results = data.steps.map(s => ev.evaluate(get(s.a), get(s.b), OPS[s.op]).geometry.attributes.position.array);
+    // a step may name its result ('as') so later steps can build on it
+    const results = data.steps.map(s => {
+      const r = ev.evaluate(get(s.a), get(s.b), OPS[s.op]);
+      if (s.as) { r.updateMatrixWorld(); local[s.as] = r; }
+      return r.geometry.attributes.position.array;
+    });
     postMessage({ id: data.id, results }, [...new Set(results.map(r => r.buffer))]);
   } catch (e) {
     postMessage({ id: data.id, error: String(e && e.message || e) });
@@ -1490,7 +1905,11 @@ const posGeom = arr => {
 function csgMain(inputs, steps) {
   const brushes = { model: model.brush };
   for (const [k, g] of Object.entries(inputs)) { brushes[k] = new Brush(g); brushes[k].updateMatrixWorld(); }
-  return steps.map(s => evaluator.evaluate(brushes[s.a], brushes[s.b], OPS_MAIN[s.op]).geometry);
+  return steps.map(s => {
+    const r = evaluator.evaluate(brushes[s.a], brushes[s.b], OPS_MAIN[s.op]);
+    if (s.as) { r.updateMatrixWorld(); brushes[s.as] = r; }
+    return r.geometry.clone();
+  });
 }
 
 // inputs: { name: BufferGeometry }, steps: [{ a, b, op }] where 'model' is the working model
@@ -1536,35 +1955,66 @@ function cancelCSG() {
 let buildSeq = 0;
 function buildAsync() { return build(); }
 
+// CSG plan for several stamps: cutouts and flush inlays carve the body first (in list order),
+// then every relief is cut against the final body so it sits on what is really there
+function csgPlan(list) {
+  const steps = [], outs = [];
+  let baseKey = 'model';
+  list.forEach((b, i) => {
+    if (b.mode === 'cutout') {
+      steps.push({ a: baseKey, b: 'b' + i, op: 'sub', as: 'base' + i });
+      baseKey = 'base' + i;
+    } else if (b.mode === 'flush') {
+      steps.push({ a: baseKey, b: 'b' + i, op: 'int' });
+      outs.push({ step: steps.length - 1, i });
+      steps.push({ a: baseKey, b: 'b' + i, op: 'sub', as: 'base' + i });
+      baseKey = 'base' + i;
+    }
+  });
+  const baseStep = baseKey === 'model' ? -1 : steps.length - 1;
+  list.forEach((b, i) => {
+    if (b.mode !== 'relief') return;
+    steps.push({ a: 'b' + i, b: baseKey, op: 'sub' });
+    outs.push({ step: steps.length - 1, i });
+  });
+  return { steps, outs, baseStep };
+}
+
 async function build() {
   clearTimeout(buildTimer);
-  if (!ready()) { log('NEED A MODEL AND AN IMAGE FIRST', 'err'); return false; }
+  if (!anyReady()) { log('NEED A MODEL AND A STAMP FIRST', 'err'); return false; }
   const seq = ++buildSeq;
   cancelCSG();
   const t0 = performance.now();
-  const mode = P.mode;
   try {
     clearResult();
-    const [ht, hb] = buildHeights();
-    const brushGeom = brushGeometry(ht, hb);
-    const steps = mode === 'relief' ? [{ a: 'brush', b: 'model', op: 'sub' }]
-      : mode === 'cutout' ? [{ a: 'model', b: 'brush', op: 'sub' }]
-      : [{ a: 'model', b: 'brush', op: 'sub' }, { a: 'model', b: 'brush', op: 'int' }];
-    const out = await runCSG({ brush: brushGeom }, steps);
+    const brushes = stamps.filter(stampReady).map(s => withStamp(s, () => {
+      const [ht, hb] = buildHeights();
+      return { stamp: s, geom: brushGeometry(ht, hb), mode: P.mode };
+    }));
+    const inputs = {};
+    brushes.forEach((b, i) => { inputs['b' + i] = b.geom; });
+    const plan = csgPlan(brushes);
+    const out = await runCSG(inputs, plan.steps);
     if (seq !== buildSeq) { out.forEach(g => g.dispose()); return false; }
-    let base, stamp = null;
-    if (mode === 'relief') { base = model.geom; stamp = out[0]; }
-    else if (mode === 'cutout') base = out[0];
-    else [base, stamp] = out;
-    result = { base, stamp, brushGeom, mode };
+    const base = plan.baseStep < 0 ? model.geom : out[plan.baseStep];
+    const bodies = plan.outs.map(o => ({ geom: out[o.step], color: brushes[o.i].stamp.params.colArt, stamp: brushes[o.i].stamp }));
+    const keep = new Set([plan.baseStep, ...plan.outs.map(o => o.step)]);
+    out.forEach((g, i) => { if (!keep.has(i)) g.dispose(); });
+    result = { base, bodies, brushes };
     baseMesh.geometry = base;
-    stampMesh.geometry = stamp || new THREE.BufferGeometry();
-    modelMesh.visible = artMesh.visible = false;
+    for (const b of bodies) {
+      const m = new THREE.Mesh(b.geom, stampMaterials(b.color).solid);
+      m.userData.stampId = b.stamp.id;
+      resultGroup.add(m);
+    }
+    modelMesh.visible = stampGroup.visible = false;
     resultGroup.visible = true;
-    const tri = g => g ? (g.index ? g.index.count : g.attributes.position.count) / 3 : 0;
+    const tri = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
     const ms = Math.round(performance.now() - t0);
-    $('#buildInfo').textContent = `BUILT IN ${ms} MS\nBODY ${tri(base).toLocaleString()} TRIS` + (stamp ? `\nSTAMP ${tri(stamp).toLocaleString()} TRIS` : '');
-    log(`BUILD OK: ${mode.toUpperCase()} IN ${ms} MS (${lastCSGPath})`);
+    const stampTris = bodies.reduce((n, b) => n + tri(b.geom), 0);
+    $('#buildInfo').textContent = `BUILT IN ${ms} MS\nBODY ${tri(base).toLocaleString()} TRIS` + (bodies.length ? `\n${bodies.length} STAMP BODIES, ${stampTris.toLocaleString()} TRIS` : '');
+    log(`BUILD OK: ${brushes.length} STAMP${brushes.length === 1 ? '' : 'S'} IN ${ms} MS (${lastCSGPath})`);
     return true;
   } catch (e) {
     if (e.message === 'CANCELLED' || seq !== buildSeq) return false;
@@ -1621,7 +2071,8 @@ function placeDefault(resetSize) {
   if (!model || !art) return;
   if (resetSize) {
     P.size = Math.max(5, Math.round(Math.min(model.size.x, model.size.y) * 0.5));
-    ui.size.set(P.size);
+    if (curStamp()) curStamp().params.size = P.size;
+    if (curStamp() === activeStamp) ui.size.set(P.size);
   }
   rc.set(new V3(0, 0, model.size.z + 10), new V3(0, 0, -1));
   rc.far = Infinity;
@@ -1638,12 +2089,21 @@ const screenOf = v => {
   const s = v.clone().project(camera);
   return { x: r.left + (s.x + 1) / 2 * r.width, y: r.top + (1 - s.y) / 2 * r.height };
 };
+// the stamp under the cursor: the active one (incl. the gaps inside its frame) wins, then any other
+function pickStamp(e) {
+  if (ready() && overStamp(e)) return activeStamp;
+  const hits = pick.intersectObjects(stamps.filter(stampReady).map(s => s.mesh), false);
+  return hits.length ? stampRegistry.get(hits[0].object.userData.stampId) : null;
+}
+
 vp.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !ready() || e.target.closest('#gizmo .gz-corner, #gizmo .gz-rot')) return;
+  if (e.button !== 0 || !model || e.target.closest('#gizmo .gz-corner, #gizmo .gz-rot')) return;
   setRay(e);
-  // clicking the stamp selects it (shows resize / rotate handles); clicking elsewhere deselects
-  stampSelected = overStamp(e);
-  if (!stampSelected) return;
+  // clicking a stamp activates + selects it (resize / rotate handles); clicking elsewhere deselects
+  const s = pickStamp(e);
+  stampSelected = !!s;
+  if (!s) return;
+  if (s !== activeStamp) activateStamp(s);
   const c = screenOf(place.p);
   grabOffset = { x: e.clientX - c.x, y: e.clientY - c.y };
   moved = false;
@@ -1666,9 +2126,9 @@ vp.addEventListener('pointermove', e => {
       if (ev.shiftKey) dragLocked(hit.point);
       else { axisLock = null; placeAtHit(hit, pick.ray.direction, false); }
       updatePreview();
-    } else if (ready() && !ev.buttons) {
+    } else if (!ev.buttons) {
       setRay(ev);
-      vp.classList.toggle('over', overStamp(ev));
+      vp.classList.toggle('over', !!pickStamp(ev));
     }
   });
   moveQueued = e;
@@ -1907,12 +2367,30 @@ function nudge(dx, dy) {
    ============================================================ */
 const ui = {};
 function onParam(k) {
-  if (TRACE_KEYS.has(k)) return retraceSoon();
-  if (k === 'colModel') { matModel.color.set(P.colModel); return; }
-  if (k === 'colArt') { matArt.color.set(P.colArt); matGhost.color.set(P.colArt); return; }
+  if (k === 'colModel') { matModel.color.set(P.colModel); noteChange(); return; }
   if (k === 'autoBuild') { if (P.autoBuild && !result) scheduleBuild(); return; }
-  noteChange();
+  const s = activeStamp;
   if (k === 'mode') syncModeGroups();
+  if (!s) return;
+  s.params[k] = P[k];
+  noteChange();
+  if (k === 'colArt') {
+    setStampColor(s);
+    // a built result keeps its geometry; only its color changes
+    if (result) for (const b of result.bodies) if (b.stamp === s) b.color = P.colArt;
+    for (const m of resultGroup.children) if (m.userData.stampId === s.id) m.material.color.set(P.colArt);
+    renderStampList();
+    return;
+  }
+  if (k === 'mode') renderStampList();
+  if (k === 'shpType' || k === 'shpStroke' || k === 'shpDash') syncKindPanels();
+  if (k === 'txtFont') renderWeights();
+  const regen = TRACE_KEYS.has(k) || TEXT_KEYS.has(k) || SHAPE_KEYS.has(k) || (k === 'size' && s.kind === 'shape');
+  if (regen) {
+    retraceSoon();
+    if (TEXT_KEYS.has(k) || SHAPE_KEYS.has(k)) renderStampList();
+    if (k !== 'size') return;
+  }
   if (k === 'mirror') drawPreview();
   markDirtySoon();
 }
@@ -1952,7 +2430,7 @@ function initControls() {
     set(P[k]);
     ui[k] = { set };
   }
-  for (const el of $$('.rd')) {
+  for (const el of $$('.rd[data-k]')) {
     const k = el.dataset.k;
     const opts = el.dataset.opts.split(',').map(s => s.split(':'));
     el.innerHTML = opts.map(([v]) => `<button type="button" class="opt" data-v="${v}"></button>`).join('');
@@ -1982,8 +2460,66 @@ function initControls() {
     set(P[k]);
     ui[k] = { set };
   }
+  $('#txtInput').addEventListener('input', e => { P.txtText = e.target.value; onParam('txtText'); });
+  $('#weightRow').addEventListener('click', e => {
+    const b = e.target.closest('[data-w]');
+    if (!b) return;
+    P.txtWeight = +b.dataset.w;
+    renderWeights();
+    onParam('txtWeight');
+  });
+  $('#fontSearch').addEventListener('input', () => renderFontList());
   syncModeGroups();
+  syncKindPanels();
 }
+
+/* ---------- font picker ---------- */
+function openFonts() {
+  if (!activeStamp || activeStamp.kind !== 'text') return;
+  $('#fontModal').hidden = false;
+  $('#fontSearch').value = '';
+  $('#fontSearch').focus();
+  renderFontList();
+  loadFontCatalog().then(() => { renderFontList(); renderWeights(); });
+}
+function closeFonts() { $('#fontModal').hidden = true; }
+
+function renderFontList() {
+  const q = $('#fontSearch').value.trim().toLowerCase();
+  let names;
+  if (!q) names = SUGGESTED_FONTS;
+  else if (fontCatalog) {
+    const hits = fontCatalog.filter(f => f.family.toLowerCase().includes(q));
+    hits.sort((a, b) => (b.family.toLowerCase().startsWith(q) - a.family.toLowerCase().startsWith(q)) || a.family.localeCompare(b.family));
+    names = hits.slice(0, 60).map(f => f.family);
+  } else names = SUGGESTED_FONTS.filter(f => f.toLowerCase().includes(q));
+  $('#fontHint').textContent = !q ? 'SUGGESTED - TYPE TO SEARCH ALL GOOGLE FONTS' + (fontCatalog ? ` (${fontCatalog.length})` : '')
+    : `${names.length}${names.length === 60 ? '+' : ''} MATCHES` + (fontCatalog ? '' : ' (FULL LIST NOT LOADED)');
+  const list = $('#fontList');
+  list.innerHTML = names.map(f => `<button type="button" class="font-item${f === P.txtFont ? ' on' : ''}" data-font="${f.replace(/"/g, '&quot;')}">
+    <span class="fi-name">${f.toUpperCase()}</span><span class="fi-sample">${f.replace(/</g, '&lt;')}</span></button>`).join('');
+  // each sample renders in its own font (tiny subset requests, only for what's listed)
+  for (const btn of list.querySelectorAll('.font-item')) {
+    const fam = btn.dataset.font;
+    previewFont(fam).then(alias => { btn.querySelector('.fi-sample').style.fontFamily = `"${alias}", sans-serif`; });
+  }
+}
+
+$('#fontList').addEventListener('click', e => {
+  const b = e.target.closest('[data-font]');
+  if (!b) return;
+  P.txtFont = b.dataset.font;
+  const ws = fontWeights(P.txtFont);
+  if (!ws.includes(+P.txtWeight)) {
+    P.txtWeight = ws.reduce((a, w) => Math.abs(w - 400) < Math.abs(a - 400) ? w : a, ws[0]);
+    activeStamp.params.txtWeight = P.txtWeight;
+  }
+  const info = fontInfo(P.txtFont);
+  if (P.txtItalic && info && !info.italic) { P.txtItalic = false; activeStamp.params.txtItalic = false; ui.txtItalic.set(false); }
+  closeFonts();
+  log('FONT: ' + P.txtFont.toUpperCase());
+  onParam('txtFont');
+});
 
 /* ============================================================
    FILES
@@ -2000,24 +2536,47 @@ async function handleFile(file) {
   const name = file.name;
   if (/\.svg$/i.test(name) || file.type === 'image/svg+xml') {
     const text = await file.text();
-    setArtSource({ kind: 'svg', name, text });
-    persist('image', { kind: 'svg', name, text });
+    addImageStamp({ kind: 'svg', name, text }, { kind: 'svg', name, text });
   } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name)) {
     try {
-      setArtSource({ kind: 'raster', name, img: await createImageBitmap(file) });
-      persist('image', { kind: 'raster', name, type: file.type, bytes: await file.arrayBuffer() });
+      const img = await createImageBitmap(file);
+      addImageStamp({ kind: 'raster', name, img }, { kind: 'raster', name, type: file.type, bytes: await file.arrayBuffer() });
     }
     catch (e) { log(`${name}: IMAGE DECODE FAILED`, 'err'); }
   } else log('UNKNOWN FILE TYPE: ' + name, 'err');
 }
 
-function setArtSource(src) {
-  artSrc = src;
-  art = null;
+// image sources are stored once, under a key of their own, so the session can bring them back
+const newSrcKey = () => 'src:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+let replaceTarget = null;   // set by REPLACE IMAGE: the next image goes into this stamp
+
+function addImageStamp(src, data) {
+  log('LOADED ' + src.name);
+  const target = replaceTarget && stamps.includes(replaceTarget) ? replaceTarget : null;
+  replaceTarget = null;
+  let s;
+  if (target) {
+    s = target;
+    s.src = src;
+    s.name = src.name;
+    s.art = null;
+    if (s === activeStamp) { artSrc = src; art = null; }
+    activateStamp(s);
+    retrace(s);
+  } else {
+    s = addStamp('image', src.name, freshParams('image'), src);
+  }
+  s.srcKey = newSrcKey();
+  if (data) persist(s.srcKey, data);
+  updateImgInfo();
+}
+
+function updateImgInfo() {
+  const s = activeStamp;
+  if (!s || s.kind !== 'image') return;
+  const src = s.src;
   const dims = src.img ? ` ${src.img.width}x${src.img.height}PX` : '';
   $('#imgInfo').textContent = `${src.name}${dims}\n${src.kind === 'svg' ? 'SVG' : 'BITMAP'}`;
-  log('LOADED ' + src.name);
-  retrace();
 }
 
 $('#fStl').addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; });
@@ -2036,9 +2595,8 @@ function loadDemo() {
   g.rotateX(Math.PI / 2);
   setParts([{ name: 'DEMO_PUCK.STL', geom: cleanGeom(g), on: true }], 'DEMO_PUCK.STL');
   if (restoringSession) return;
-  setArtSource({ kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
   persist('models', { demo: true });
-  persist('image', { kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
+  addImageStamp({ kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG }, { kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
 }
 
 /* ============================================================
@@ -2080,11 +2638,18 @@ function saveStateSoon() {
   if (restoringSession) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => persist('state', {
-    P: { ...P },
-    place: place.p ? { p: place.p.toArray(), n: place.n.toArray(), ref: place.ref.toArray() } : null,
+    G: { colModel: P.colModel, autoBuild: P.autoBuild },
+    stamps: stamps.map(s => ({ kind: s.kind, name: s.name, params: s.params, place: placeToArr(s.place), srcKey: s.srcKey || null })),
+    active: stamps.indexOf(activeStamp),
     parts: parts.map(p => ({ o: p.orig, on: p.on })),
     cam: { pos: camera.position.toArray(), tgt: controls.target.toArray() },
   }), 400);
+}
+
+async function srcFromData(d) {
+  if (!d) return null;
+  if (d.kind === 'svg') return { kind: 'svg', name: d.name, text: d.text };
+  return { kind: 'raster', name: d.name, img: await createImageBitmap(new Blob([d.bytes], { type: d.type })) };
 }
 controls.addEventListener('end', saveStateSoon);
 
@@ -2092,7 +2657,7 @@ async function restoreSession() {
   let models, image, st;
   try { [models, image, st] = await Promise.all(['models', 'image', 'state'].map(k => idb.get(k))); }
   catch { return; }
-  if (!models && !image) return;
+  if (!models && !image && !st?.stamps?.length) return;
   restoringSession = true;
   try {
     if (models?.demo) loadDemo();
@@ -2106,26 +2671,37 @@ async function restoreSession() {
         renderParts();
         rebuildModel(false);
       }
-      for (const k of Object.keys(st.P || {})) if (k in P) P[k] = st.P[k];
-      for (const k of Object.keys(P)) ui[k]?.set(P[k]);
-      syncModeGroups();
+      const G = st.G || st.P || {};
+      if ('colModel' in G) P.colModel = G.colModel;
+      if ('autoBuild' in G) P.autoBuild = G.autoBuild;
+      ui.colModel.set(P.colModel);
+      ui.autoBuild.set(P.autoBuild);
       matModel.color.set(P.colModel);
-      matArt.color.set(P.colArt);
-      matGhost.color.set(P.colArt);
-      if (st.place && model) {
-        place.p = new V3().fromArray(st.place.p);
-        place.n = new V3().fromArray(st.place.n);
-        place.ref = new V3().fromArray(st.place.ref);
+
+      // older sessions had a single image + flat settings
+      const saved = st.stamps || (image ? [{ kind: 'image', name: image.name, params: st.P, place: st.place, srcKey: 'image' }] : []);
+      for (const x of saved) {
+        let src = null;
+        if (x.kind === 'image') {
+          src = await srcFromData(x.srcKey === 'image' ? image : await idb.get(x.srcKey));
+          if (!src) continue;
+        }
+        const params = { ...STAMP_DEFAULTS };
+        for (const k of STAMP_KEYS) if (x.params && k in x.params) params[k] = x.params[k];
+        const s = newStampObject(x.kind, x.name, params, src);
+        s.srcKey = x.srcKey;
+        if (model) placeFromArr(s.place, x.place);
+        stamps.push(s);
       }
+      activateStamp(stamps[st.active] || stamps[0] || null);
+      stamps.forEach(s => retrace(s));
       if (st.cam && model) {
         camera.position.fromArray(st.cam.pos);
         controls.target.fromArray(st.cam.tgt);
         controls.update();
       }
     }
-    if (image?.kind === 'svg') setArtSource({ kind: 'svg', name: image.name, text: image.text });
-    else if (image?.kind === 'raster') setArtSource({ kind: 'raster', name: image.name, img: await createImageBitmap(new Blob([image.bytes], { type: image.type })) });
-    else markDirty();
+    markDirty('all');
     log('SESSION RESTORED');
   } catch (e) {
     console.error(e);
@@ -2154,8 +2730,21 @@ function download(blob, fname) {
 const baseName = () => (modelName || 'model').replace(/\.(stl|3mf)$/i, '');
 
 async function ensureBuilt() {
-  if (result && result.mode === P.mode) return true;
+  if (result) return true;
   return buildAsync();
+}
+
+const nonIndexed = g => g.index ? g.toNonIndexed() : g;
+// stamp bodies merged per color: one printable part / filament per color
+function bodyGroups(r) {
+  const m = new Map();
+  for (const b of r.bodies) {
+    const key = b.color.toLowerCase();
+    if (!m.has(key)) m.set(key, { color: b.color, geoms: [], stamps: [] });
+    m.get(key).geoms.push(b.geom);
+    m.get(key).stamps.push(b.stamp);
+  }
+  return [...m.values()].map(g => ({ ...g, geom: g.geoms.length === 1 ? g.geoms[0] : mergeGeometries(g.geoms.map(nonIndexed)) }));
 }
 
 function stlBlob(geom) {
@@ -2169,13 +2758,12 @@ async function exportSTL(which) {
   let g;
   if (which === 'base') g = r.base;
   else if (which === 'stamp') {
-    if (!r.stamp) { log('CUTOUT MODE HAS NO STAMP BODY', 'err'); return; }
-    g = r.stamp;
-  } else if (r.mode === 'relief') {
-    [g] = await runCSG({ brush: r.brushGeom }, [{ a: 'model', b: 'brush', op: 'add' }]);
-  } else if (r.stamp) {
-    g = mergeGeometries([r.base, r.stamp].map(x => x.index ? x.toNonIndexed() : x));
-  } else g = r.base;
+    if (!r.bodies.length) { log('ONLY CUTOUTS: THERE IS NO STAMP BODY', 'err'); return; }
+    g = mergeGeometries(r.bodies.map(b => nonIndexed(b.geom)));
+  } else {
+    // stamp bodies touch the body without overlapping it, so plain concatenation prints as one
+    g = r.bodies.length ? mergeGeometries([r.base, ...r.bodies.map(b => b.geom)].map(nonIndexed)) : r.base;
+  }
   const suffix = which === 'base' ? '_body' : which === 'stamp' ? '_stamp' : '_stamped';
   download(stlBlob(g), baseName() + suffix + '.stl');
 }
@@ -2213,8 +2801,12 @@ function export3MF() {
 
 async function exportNew3MF() {
   if (!(await ensureBuilt())) return;
-  const parts = [{ name: 'body', g: result.base, color: P.colModel }];
-  if (result.stamp) parts.push({ name: 'stamp', g: result.stamp, color: P.colArt });
+  const parts = [{ name: 'body', g: result.base, color: P.colModel, ext: 1 }];
+  let nextExt = 2;
+  bodyGroups(result).forEach((grp, i) => parts.push({
+    name: 'stamp' + (i + 1), g: grp.geom, color: grp.color,
+    ext: grp.color.toLowerCase() === P.colModel.toLowerCase() ? 1 : nextExt++,
+  }));
   const col = c => c.toUpperCase() + 'FF';
   const mats = parts.map(p => `<base name="${p.name}" displaycolor="${col(p.color)}"/>`).join('');
   const objs = parts.map((p, i) => `<object id="${i + 2}" name="${p.name}" type="model" pid="1" pindex="${i}">${meshXML(p.g)}</object>`).join('');
@@ -2234,7 +2826,7 @@ async function exportNew3MF() {
   // Bambu / Orca read per-part filament assignment from this file
   const settings = `<?xml version="1.0" encoding="UTF-8"?>
 <config><object id="${parentId}"><metadata key="name" value="${baseName()}"/><metadata key="extruder" value="1"/>${
-    parts.map((p, i) => `<part id="${i + 2}" subtype="normal_part"><metadata key="name" value="${p.name}"/><metadata key="matrix" value="${IDENTITY16}"/><metadata key="extruder" value="${i + 1}"/></part>`).join('')
+    parts.map((p, i) => `<part id="${i + 2}" subtype="normal_part"><metadata key="name" value="${p.name}"/><metadata key="matrix" value="${IDENTITY16}"/><metadata key="extruder" value="${p.ext}"/></part>`).join('')
   }</object></config>`;
   const zip = zipSync({
     '[Content_Types].xml': strToU8(types),
@@ -2288,30 +2880,55 @@ async function exportPatched3MF() {
   const prusa = dom('Metadata/Slic3r_PE_model.config');
   const notes = [];
 
-  // which selected parts does the stamp touch, and which one carries the stamp body?
-  const box = r.brushGeom.boundingBox;
   const inModel = p => p.geom.clone().translate(modelOffset.x, modelOffset.y, modelOffset.z);
-  const touched = parts.filter(p => {
-    if (!p.on || !p.src) return false;
-    p.geom.computeBoundingBox();
-    return p.geom.boundingBox.clone().translate(modelOffset).intersectsBox(box);
-  });
-  if (!touched.length && removedSrcs.length === 0) { log('THE STAMP DOES NOT TOUCH ANY SELECTED PART', 'err'); return; }
-  let target = touched[0], bestD = Infinity;
-  for (const p of touched) {
-    rc.set(place.p.clone().addScaledVector(place.n, 2), place.n.clone().negate());
-    rc.far = 20;
-    const h = rc.intersectObject(new THREE.Mesh(inModel(p), matModel), false)[0];
-    if (h && h.distance < bestD) { bestD = h.distance; target = p; }
-  }
   const toLocal = (g, full) => g.clone().translate(-modelOffset.x, -modelOffset.y, -modelOffset.z).applyMatrix4(full.clone().invert());
+  const live = parts.filter(p => p.on && p.src);
+  const boxes = new Map(live.map(p => { p.geom.computeBoundingBox(); return [p, p.geom.boundingBox.clone().translate(modelOffset)]; }));
 
+  // cutout / flush stamps carve the parts they reach
+  const carving = r.brushes.filter(b => b.mode !== 'relief');
+  const touched = live.filter(p => carving.some(b => boxes.get(p).intersectsBox(b.geom.boundingBox)));
+
+  // every stamp body becomes a new part of the part right under its stamp
+  const targetFor = s => {
+    let best = null, bestD = Infinity;
+    for (const p of live) {
+      if (!boxes.get(p).clone().expandByScalar(2).containsPoint(s.place.p)) continue;
+      rc.set(s.place.p.clone().addScaledVector(s.place.n, 2), s.place.n.clone().negate());
+      rc.far = 20;
+      const h = rc.intersectObject(new THREE.Mesh(inModel(p), matModel), false)[0];
+      if (h && h.distance < bestD) { bestD = h.distance; best = p; }
+    }
+    return best;
+  };
+  const groupMap = new Map();
+  for (const b of r.bodies) {
+    const target = targetFor(b.stamp);
+    if (!target) { notes.push('A STAMP IS NOT ON ANY SELECTED PART - SKIPPED'); continue; }
+    const key = b.color.toLowerCase() + '|' + target.uid;
+    if (!groupMap.has(key)) groupMap.set(key, { color: b.color, target, geoms: [] });
+    groupMap.get(key).geoms.push(b.geom);
+  }
+  const groups = [...groupMap.values()].map(g => ({ ...g, geom: g.geoms.length === 1 ? g.geoms[0] : mergeGeometries(g.geoms.map(nonIndexed)) }));
+  if (!touched.length && !groups.length && removedSrcs.length === 0) { log('THE STAMPS DO NOT TOUCH ANY SELECTED PART', 'err'); return; }
+
+  // re-cut each touched part through every carving brush that reaches it, in order
   const edits = new Map();
-  if (r.mode !== 'relief' && touched.length) {
-    const inputs = { brush: r.brushGeom };
-    touched.forEach((p, i) => { inputs['part' + i] = mergeVertices(inModel(p), 1e-4); });
-    const cut = await runCSG(inputs, touched.map((_, i) => ({ a: 'part' + i, b: 'brush', op: 'sub' })));
-    touched.forEach((p, i) => edits.set(p, cut[i]));
+  if (touched.length) {
+    const inputs = {}, steps = [], last = [];
+    carving.forEach((b, j) => { inputs['c' + j] = b.geom; });
+    touched.forEach((p, i) => {
+      inputs['part' + i] = mergeVertices(inModel(p), 1e-4);
+      let cur = 'part' + i;
+      carving.forEach((b, j) => {
+        if (!boxes.get(p).intersectsBox(b.geom.boundingBox)) return;
+        steps.push({ a: cur, b: 'c' + j, op: 'sub', as: `p${i}c${j}` });
+        cur = `p${i}c${j}`;
+      });
+      last.push(steps.length - 1);
+    });
+    const cut = await runCSG(inputs, steps);
+    touched.forEach((p, i) => edits.set(p, cut[last[i]]));
   }
   const shared = new Set();
   for (const p of edits.keys()) if (parts.filter(q => q.src && q.src.path === p.src.path && q.src.objId === p.src.objId && q.src.vol === p.src.vol).length > 1) shared.add(p.name);
@@ -2329,37 +2946,41 @@ async function exportPatched3MF() {
     return m;
   };
 
-  // ---- filament for the stamp
-  let extruder = '2';
-  const stampG = touched.length ? r.stamp : null;
-  if (stampG && bambu) {
-    const psKey = zipKey(files, 'Metadata/project_settings.config');
-    const ps = psKey ? JSON.parse(dec.decode(files[psKey])) : null;
-    const bodyExt = metaVal(byId(bambu, 'object', target.src.topId) || bambu.documentElement, 'extruder') || '1';
-    if (ps?.filament_colour?.length) {
+  // ---- filament per stamp color: reuse a matching one, else add one (Bambu / Orca)
+  const psKey = bambu ? zipKey(files, 'Metadata/project_settings.config') : null;
+  const ps = psKey ? JSON.parse(dec.decode(files[psKey])) : null;
+  let psDirty = false;
+  const prusaText = prusa && files[zipKey(files, 'Metadata/Slic3r_PE.config')];
+  const prusaCols = (() => {
+    const m = prusaText && /;\s*extruder_colour\s*=\s*(.*)/.exec(dec.decode(prusaText));
+    return m ? m[1].split(';').map(s => s.replace(/"/g, '').trim()) : [];
+  })();
+  const extruderFor = (color, target) => {
+    if (bambu) {
+      if (!ps?.filament_colour?.length) return '2';
+      const bodyExt = metaVal(byId(bambu, 'object', target.src.topId) || bambu.documentElement, 'extruder') || '1';
       let best = -1, bd = Infinity;
       ps.filament_colour.forEach((c, i) => {
         if (String(i + 1) === bodyExt || !/^#[0-9a-f]{6}/i.test(c)) return;
-        const d = colorDist(c.slice(0, 7), P.colArt);
+        const d = colorDist(c.slice(0, 7), color);
         if (d < bd) { bd = d; best = i; }
       });
-      if (best >= 0 && bd < 60) extruder = String(best + 1);
-      else {
-        extruder = String(addFilament(ps, P.colArt));
-        files[psKey] = strToU8(JSON.stringify(ps, null, 4));
-        notes.push(`ADDED FILAMENT ${extruder} (${P.colArt.toUpperCase()})`);
-      }
+      if (best >= 0 && bd < 60) return String(best + 1);
+      const e = String(addFilament(ps, color));
+      psDirty = true;
+      notes.push(`ADDED FILAMENT ${e} (${color.toUpperCase()})`);
+      return e;
     }
-  } else if (stampG && prusa) {
-    const t = files[zipKey(files, 'Metadata/Slic3r_PE.config')];
-    const m = t && /;\s*extruder_colour\s*=\s*(.*)/.exec(dec.decode(t));
-    const cols = m ? m[1].split(';').map(s => s.replace(/"/g, '').trim()) : [];
-    if (cols.length >= 2) {
+    if (prusa) {
+      if (prusaCols.length < 2) { notes.push('PRUSA PROJECT HAS ONE EXTRUDER: SET THE STAMP EXTRUDERS IN THE SLICER'); return '1'; }
       let best = 1, bd = Infinity;
-      cols.forEach((c, i) => { if (/^#[0-9a-f]{6}$/i.test(c) && i > 0) { const d = colorDist(c, P.colArt); if (d < bd) { bd = d; best = i; } } });
-      extruder = String(best + 1);
-    } else { extruder = '1'; notes.push('PRUSA PROJECT HAS ONE EXTRUDER: SET THE STAMP EXTRUDER IN THE SLICER'); }
-  }
+      prusaCols.forEach((c, i) => { if (/^#[0-9a-f]{6}$/i.test(c) && i > 0) { const d = colorDist(c, color); if (d < bd) { bd = d; best = i; } } });
+      return String(best + 1);
+    }
+    return '2';
+  };
+  groups.forEach(g => { g.extruder = extruderFor(g.color, g.target); });
+  if (psDirty) files[psKey] = strToU8(JSON.stringify(ps, null, 4));
 
   // ---- edited bodies (non-Prusa objects: replace the object's mesh)
   for (const [p, g] of edits) {
@@ -2369,13 +2990,13 @@ async function exportPatched3MF() {
   }
 
   // ---- Prusa objects: rebuild the object mesh from its volumes and fix the triangle ranges
-  const prusaIds = new Set([...edits.keys(), ...(stampG ? [target] : [])].filter(p => p.src.kind === 'prusa').map(p => p.src.objId));
+  const prusaIds = new Set([...edits.keys(), ...groups.map(g => g.target)].filter(p => p.src.kind === 'prusa').map(p => p.src.objId));
   removedSrcs.filter(s => s.kind === 'prusa').forEach(s => prusaIds.add(s.objId));
   for (const id of prusaIds) {
     const vols = parts.filter(p => p.src?.kind === 'prusa' && p.src.objId === id).sort((a, b) => a.src.vol - b.src.vol);
     const geoms = vols.map(p => edits.has(p) ? toLocal(edits.get(p), p.src.full) : p.src.local);
-    const addStamp = stampG && target.src.kind === 'prusa' && target.src.objId === id;
-    if (addStamp) geoms.push(toLocal(stampG, target.src.full));
+    const added = groups.filter(g => g.target.src.kind === 'prusa' && g.target.src.objId === id);
+    for (const g of added) geoms.push(toLocal(g.geom, g.target.src.full));
     const o = byId(rootD, 'object', id);
     const cfgObj = prusa && byId(prusa, 'object', id);
     if (!geoms.length) {
@@ -2397,32 +3018,42 @@ async function exportPatched3MF() {
       v.setAttribute('lastid', first + counts[i] - 1);
       first += counts[i];
     });
-    if (addStamp) {
+    added.forEach((g, i) => {
+      const c = counts[vols.length + i];
       const v = prusa.createElement('volume');
       v.setAttribute('firstid', first);
-      v.setAttribute('lastid', first + counts[counts.length - 1] - 1);
+      v.setAttribute('lastid', first + c - 1);
+      first += c;
       v.append(
-        metaEl(prusa, { type: 'volume', key: 'name', value: 'STAMP' }),
+        metaEl(prusa, { type: 'volume', key: 'name', value: 'STAMP ' + (i + 1) }),
         metaEl(prusa, { type: 'volume', key: 'volume_type', value: 'ModelPart' }),
         metaEl(prusa, { type: 'volume', key: 'matrix', value: IDENTITY16 }),
-        metaEl(prusa, { type: 'volume', key: 'extruder', value: extruder }),
+        metaEl(prusa, { type: 'volume', key: 'extruder', value: g.extruder }),
       );
       cfgObj.append(v);
-    }
+    });
   }
 
-  // ---- stamp body as a new part of the object it sits on (Bambu / Orca / generic)
-  if (stampG && target.src.kind !== 'prusa') {
-    const ts = target.src;
-    let maxId = 0;
-    for (const k of Object.keys(files)) if (/\.model$/i.test(k)) for (const o of dom(k).getElementsByTagName('object')) maxId = Math.max(maxId, +o.getAttribute('id') || 0);
-    const newId = String(maxId + 1);
+  // ---- stamp bodies as new parts of the objects they sit on (Bambu / Orca / generic)
+  let maxId = 0;
+  for (const k of Object.keys(files)) if (/\.model$/i.test(k)) for (const o of dom(k).getElementsByTagName('object')) maxId = Math.max(maxId, +o.getAttribute('id') || 0);
+  const rootNS = rootD.documentElement.namespaceURI;
+  const comp = id => {
+    const c = rootD.createElementNS(rootNS, 'component');
+    c.setAttribute('objectid', id);
+    return c;
+  };
+  const wrapped = new Map(); // mesh-only top objects get one wrapper, shared by all their stamps
+  groups.filter(g => g.target.src.kind !== 'prusa').forEach((g, gi) => {
+    const ts = g.target.src;
+    const newId = String(++maxId);
     const top = byId(rootD, 'object', ts.topId);
-    const comps = top && kids(top, 'components')[0];
-    const stampPath = comps ? ts.path : S.root;
+    let comps = top && kids(top, 'components')[0];
+    if (!comps && wrapped.has(ts.topId)) comps = wrapped.get(ts.topId);
+    const stampPath = comps && !wrapped.has(ts.topId) ? ts.path : S.root;
     const d = dom(stampPath);
     const unit = UNIT_MM[d.documentElement.getAttribute('unit') || 'millimeter'] || 1;
-    const local = toLocal(stampG, ts.itemM.clone().multiply(new THREE.Matrix4().makeScale(unit, unit, unit)));
+    const local = toLocal(g.geom, ts.itemM.clone().multiply(new THREE.Matrix4().makeScale(unit, unit, unit)));
     const ns = d.documentElement.namespaceURI;
     const usesUUID = !!d.querySelector('object[*|UUID]');
     const ob = d.createElementNS(ns, 'object');
@@ -2432,10 +3063,10 @@ async function exportPatched3MF() {
     if (!bambu) {
       // plain 3MF: give the stamp its own display color
       const bm = d.createElementNS(ns, 'basematerials');
-      bm.setAttribute('id', String(maxId + 3));
+      bm.setAttribute('id', String(++maxId));
       const base = d.createElementNS(ns, 'base');
-      base.setAttribute('name', 'stamp');
-      base.setAttribute('displaycolor', P.colArt.toUpperCase() + 'FF');
+      base.setAttribute('name', 'stamp' + (gi + 1));
+      base.setAttribute('displaycolor', g.color.toUpperCase() + 'FF');
       bm.append(base);
       const res = d.getElementsByTagName('resources')[0];
       res.insertBefore(bm, res.firstChild);
@@ -2445,12 +3076,6 @@ async function exportPatched3MF() {
     setMesh(ob, meshXML(local));
     d.getElementsByTagName('resources')[0].append(ob);
 
-    const rootNS = rootD.documentElement.namespaceURI;
-    const comp = id => {
-      const c = rootD.createElementNS(rootNS, 'component');
-      c.setAttribute('objectid', id);
-      return c;
-    };
     if (comps) {
       const c = comp(newId);
       if (zipKey(files, stampPath) !== zipKey(files, S.root)) c.setAttributeNS(PROD_NS, 'p:path', '/' + zipKey(files, stampPath));
@@ -2459,7 +3084,7 @@ async function exportPatched3MF() {
       comps.append(c);
     } else {
       // mesh-only object: wrap it and the stamp in a new parent so they stay one object
-      const wrapId = String(maxId + 2);
+      const wrapId = String(++maxId);
       const w = rootD.createElementNS(rootNS, 'object');
       w.setAttribute('id', wrapId);
       w.setAttribute('type', 'model');
@@ -2468,6 +3093,7 @@ async function exportPatched3MF() {
       w.append(cs);
       rootD.getElementsByTagName('resources')[0].append(w);
       [...rootD.getElementsByTagName('item')].filter(it => it.getAttribute('objectid') === ts.topId).forEach(it => it.setAttribute('objectid', wrapId));
+      wrapped.set(ts.topId, cs);
     }
     if (bambu) {
       const co = byId(bambu, 'object', ts.topId);
@@ -2476,14 +3102,14 @@ async function exportPatched3MF() {
         part.setAttribute('id', newId);
         part.setAttribute('subtype', 'normal_part');
         part.append(
-          metaEl(bambu, { key: 'name', value: 'STAMP' }),
+          metaEl(bambu, { key: 'name', value: 'STAMP ' + (gi + 1) }),
           metaEl(bambu, { key: 'matrix', value: IDENTITY16 }),
-          metaEl(bambu, { key: 'extruder', value: extruder }),
+          metaEl(bambu, { key: 'extruder', value: g.extruder }),
         );
         co.append(part);
       }
     }
-  }
+  });
 
   // ---- parts the user deleted (non-Prusa)
   const emptyParents = new Map();
@@ -2561,6 +3187,11 @@ const actions = {
   centerHV: () => centerOnFace(true, true),
   face: b => placeFrom(new V3(...b.dataset.dir.split(',').map(Number))),
   flip: () => { if (ready()) placeFrom(place.n.clone()); },
+  addText: addTextStamp,
+  addShape: addShapeStamp,
+  replaceImg: () => { if (activeStamp?.kind === 'image') { replaceTarget = activeStamp; $('#fImg').click(); } },
+  pickFont: openFonts,
+  closeFonts,
   help: () => help(true),
   closeHelp: () => help(false),
   crt: toggleCRT,
@@ -2575,15 +3206,17 @@ function setParam(k, v) { P[k] = v; ui[k].set(v); onParam(k); }
 addEventListener('keydown', e => {
   const fk = { F1: 'help', F2: 'loadStl', F3: 'loadImg', F4: 'demo', F5: 'build', F8: 'expStl', F9: 'exp3mf', F10: 'crt' }[e.key];
   if (fk) { e.preventDefault(); actions[fk](); return; }
-  if (e.key === 'Escape') { help(false); stampSelected = false; return; }
+  if (e.key === 'Escape') { help(false); closeFonts(); stampSelected = false; return; }
   if (e.key === 'F7' || e.key === 'Home') { e.preventDefault(); fitCamera(); return; }
-  // undo / redo (number fields keep their own text undo)
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.target.matches('input[type=number]')) {
+  // text fields (number boxes, the text stamp, font search) keep their own typing and undo
+  const typing = e.target.matches('input[type=number], input[type=text], textarea');
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing) {
     const k = e.key.toLowerCase();
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
     if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
   }
-  if (e.target.matches('input') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.matches('input, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && activeStamp) { e.preventDefault(); removeStamp(activeStamp); return; }
   const fine = e.shiftKey;
   switch (e.key.toLowerCase()) {
     case 'q': setParam('rot', ((P.rot - (fine ? 1 : 5) + 540) % 360) - 180); break;
@@ -2605,9 +3238,10 @@ addEventListener('keydown', e => {
    GO
    ============================================================ */
 initControls();
-drawPreview();
+activateStamp(null);
 updateHud();
 log('STL-STAMPER READY. PRESS F1 FOR HELP.');
+setTimeout(loadFontCatalog, 4000); // so font search is instant later
 window.__bootReady?.();
 restoreSession();
 </script>
