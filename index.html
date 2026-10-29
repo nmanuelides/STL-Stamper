@@ -1,0 +1,2493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STL Stamper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.6/src/index.js",
+    "three-bvh-csg": "https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.16/src/index.js",
+    "fflate": "https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- barrel distortion + phosphor bloom for the tube (never applied to the 3D view) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="crt" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="warpMap" x="0" y="0" width="100" height="100" preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="28" xChannelSelector="R" yChannelSelector="G" result="warp"/>
+    <feGaussianBlur in="warp" stdDeviation="1.4" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="warp"/></feMerge>
+  </filter>
+</svg>
+
+<div id="ui">
+  <header class="bar">
+    <span>&#9632; STL-STAMPER v1.86</span>
+    <span class="path">C:\STAMPER&gt; <span id="cmd">READY</span><span class="cur"></span></span>
+    <span id="clock">--</span>
+  </header>
+
+  <main class="layout">
+    <aside class="panel" id="left">
+      <section class="win"><h2>FILES</h2>
+        <button class="btn primary" data-act="loadStl">F2 LOAD STL / 3MF</button>
+        <div class="info" id="stlInfo">NO MODEL</div>
+        <div id="parts"></div>
+        <button class="btn primary" data-act="loadImg">F3 LOAD SVG / PNG</button>
+        <div class="info" id="imgInfo">NO IMAGE</div>
+        <button class="btn" data-act="demo">F4 LOAD DEMO</button>
+        <div class="hint">...OR DROP FILES ANYWHERE<br>WORK IS SAVED IN THIS BROWSER AND COMES BACK ON REFRESH</div>
+        <button class="btn" data-act="clearSession">NEW SESSION (FORGET ALL)</button>
+      </section>
+
+      <section class="win"><h2>TRACE</h2>
+        <canvas id="trace"></canvas>
+        <div class="hint">SOURCE:</div>
+        <div class="rd" data-k="trSource" data-opts="auto:AUTO,alpha:ALPHA,dark:DARK,light:LIGHT"></div>
+        <div class="sl" data-k="threshold" data-label="THRESHOLD" data-min="1" data-max="254" data-step="1"></div>
+        <div class="ck" data-k="invert" data-label="INVERT"></div>
+        <div class="sl" data-k="smooth" data-label="SIMPLIFY" data-unit="PX" data-min="0" data-max="4" data-step="0.1"></div>
+        <div class="sl" data-k="curve" data-label="ROUND CORNERS" data-min="0" data-max="3" data-step="1"></div>
+        <div class="sl" data-k="despeckle" data-label="DESPECKLE" data-unit="PX&sup2;" data-min="0" data-max="400" data-step="1"></div>
+        <div class="sl" data-k="res" data-label="RESOLUTION" data-unit="PX" data-min="128" data-max="1536" data-step="32"></div>
+        <div class="ck" data-k="svgVector" data-label="SVG: EXACT VECTOR PATHS"></div>
+        <div class="info" id="traceInfo"></div>
+      </section>
+
+      <section class="win grow"><h2>LOG</h2>
+        <div id="log"></div>
+      </section>
+    </aside>
+
+    <section class="win vpwin"><h2>VIEWPORT</h2><div id="vpSlot"></div></section>
+
+    <aside class="panel" id="right">
+      <section class="win"><h2>PLACEMENT</h2>
+        <div class="sl" data-k="size" data-label="SIZE" data-unit="MM" data-min="1" data-max="300" data-step="0.5"></div>
+        <div class="sl" data-k="rot" data-label="ROTATE" data-unit="DEG" data-min="-180" data-max="180" data-step="1"></div>
+        <div class="ck" data-k="mirror" data-label="MIRROR"></div>
+        <div class="ck" data-k="follow" data-label="FOLLOW SURFACE NORMAL"></div>
+        <div class="ck" data-k="conform" data-label="WRAP TO CURVED SURFACE"></div>
+        <div class="row">
+          <button class="btn" data-act="recenter">RESET POSITION</button>
+          <button class="btn" data-act="upright">UPRIGHT</button>
+        </div>
+        <div class="hint">PUT ON FACE:</div>
+        <div class="row">
+          <button class="btn" data-act="face" data-dir="0,0,-1">TOP</button>
+          <button class="btn" data-act="face" data-dir="0,0,1">BOTTOM</button>
+          <button class="btn" data-act="face" data-dir="0,1,0">FRONT</button>
+          <button class="btn" data-act="face" data-dir="0,-1,0">BACK</button>
+          <button class="btn" data-act="face" data-dir="1,0,0">LEFT</button>
+          <button class="btn" data-act="face" data-dir="-1,0,0">RIGHT</button>
+        </div>
+        <button class="btn primary" data-act="flip">F FLIP TO OPPOSITE SIDE</button>
+        <div class="hint">ALIGN ON THIS FACE:</div>
+        <div class="row">
+          <button class="btn" data-act="centerH">CENTER H</button>
+          <button class="btn" data-act="centerV">CENTER V</button>
+          <button class="btn" data-act="centerHV">CENTER</button>
+        </div>
+        <div class="hint">DRAG STAMP = MOVE (+SHIFT = LOCK AXIS)<br>DOUBLE-CLICK = PLACE &middot; RMB ORBIT &middot; MMB PAN &middot; Q/E ROTATE &middot; [ ] SIZE &middot; ARROWS NUDGE</div>
+      </section>
+
+      <section class="win"><h2>MODE</h2>
+        <div class="rd" data-k="mode" data-opts="relief:RELIEF,cutout:CUTOUT,flush:FLUSH"></div>
+        <div data-show="relief">
+          <div class="sl" data-k="relief" data-label="RELIEF HEIGHT" data-unit="MM" data-min="0.1" data-max="10" data-step="0.1"></div>
+          <div class="sl" data-k="sink" data-label="ROOT DEPTH" data-unit="MM" data-min="0" data-max="5" data-step="0.1"></div>
+          <div class="hint">RAISED STAMP. ROOT DEPTH ANCHORS IT INTO THE BODY ON UNEVEN SURFACES.</div>
+        </div>
+        <div data-show="cutout">
+          <div class="sl" data-k="depth" data-label="CUT DEPTH" data-unit="MM" data-min="0.1" data-max="30" data-step="0.1"></div>
+          <div class="ck" data-k="through" data-label="CUT ALL THE WAY THROUGH"></div>
+          <div class="hint">ENGRAVES THE SHAPE INTO THE BODY.</div>
+        </div>
+        <div data-show="flush">
+          <div class="sl" data-k="inlay" data-label="INLAY DEPTH" data-unit="MM" data-min="0.1" data-max="5" data-step="0.05"></div>
+          <div class="hint">FLAT ON THE SURFACE, SPLIT INTO ITS OWN BODY SO IT PRINTS IN A SECOND COLOR. USE 3MF EXPORT.</div>
+        </div>
+      </section>
+
+      <section class="win"><h2>COLORS</h2>
+        <div class="color" data-k="colModel" data-label="MODEL"></div>
+        <div class="color" data-k="colArt" data-label="STAMP"></div>
+      </section>
+
+      <section class="win"><h2>OUTPUT</h2>
+        <div class="ck" data-k="autoBuild" data-label="AUTO BUILD"></div>
+        <button class="btn primary" data-act="build">F5 BUILD</button>
+        <button class="btn primary" data-act="exp3mf" id="exp3mfLabel">F9 EXPORT 3MF (2 COLOR)</button>
+        <button class="btn" data-act="expStl">F8 EXPORT STL (MERGED)</button>
+        <button class="btn" data-act="expBase">EXPORT STL: BODY ONLY</button>
+        <button class="btn" data-act="expStamp">EXPORT STL: STAMP ONLY</button>
+        <div class="info" id="buildInfo">NOT BUILT</div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="fkeys">
+    <button data-act="help"><b>1</b><span>HELP</span></button>
+    <button data-act="loadStl"><b>2</b><span>STL</span></button>
+    <button data-act="loadImg"><b>3</b><span>IMAGE</span></button>
+    <button data-act="demo"><b>4</b><span>DEMO</span></button>
+    <button data-act="build"><b>5</b><span>BUILD</span></button>
+    <button data-act="expStl"><b>8</b><span>STL</span></button>
+    <button data-act="exp3mf"><b>9</b><span>3MF</span></button>
+    <button data-act="crt"><b>10</b><span>CRT FX</span></button>
+  </footer>
+
+  <div class="scanlines fx"></div>
+</div>
+
+<div id="vignette" class="fx"></div>
+<div id="rollbar" class="fx"></div>
+<div id="flicker" class="fx"></div>
+
+<div id="viewport">
+  <div id="vpMsg">NO MODEL LOADED<br>PRESS F2 OR DROP AN .STL</div>
+  <div id="busy" hidden>&#9632; COMPUTING CSG...</div>
+  <div id="hud"><span id="hudL"></span><span id="hudR">LMB STAMP &middot; RMB ORBIT &middot; MMB PAN &middot; WHEEL ZOOM</span></div>
+</div>
+
+<div id="modal" hidden>
+  <section class="win dlg"><h2>HELP</h2>
+<pre>STL-STAMPER // STAMP 2D ART ONTO 3D MODELS
+
+ 1. LOAD AN .STL OR .3MF (F2) AND AN .SVG/.PNG/.JPG (F3).
+    A 3MF WITH SEVERAL PARTS SHOWS THEM AS A LIST:
+    CLICK A PART TO INCLUDE / EXCLUDE IT FROM THE WORK,
+    DEL REMOVES IT (ALSO FROM THE EXPORTED 3MF).
+    HOVER A PART TO SEE IT OUTLINED IN THE VIEWPORT.
+ 2. DRAG THE STAMP TO SLIDE IT OVER THE SURFACE, OR
+    DOUBLE-CLICK THE MODEL TO DROP IT THERE. USE THE
+    FACE BUTTONS / FLIP TO JUMP TO ANOTHER SIDE.
+ 3. PICK A MODE:
+    RELIEF  - RAISED, HEIGHT IN MM
+    CUTOUT  - ENGRAVED TO A DEPTH, OR CUT THROUGH
+    FLUSH   - LEVEL WITH THE SURFACE, SEPARATE BODY
+              FOR 2-COLOR PRINTING
+ 4. F5 BUILDS THE REAL GEOMETRY (CSG). WITH AUTO BUILD
+    ON IT RUNS BY ITSELF AFTER EACH CHANGE.
+ 5. EXPORT:
+    3MF  - FROM AN STL: BODY + STAMP AS TWO PARTS OF ONE
+           OBJECT, FILAMENT 1 AND 2 PRE-ASSIGNED.
+           FROM A 3MF: THE ORIGINAL PROJECT IS KEPT
+           (PRINTER/FILAMENT/PROCESS SETTINGS, PLATES,
+           OTHER OBJECTS). ONLY THE TOUCHED MESHES CHANGE
+           AND THE STAMP IS ADDED AS A NEW PART. IF NO
+           FILAMENT MATCHES THE STAMP COLOR, ONE IS ADDED.
+    STL  - EVERYTHING MERGED, OR EACH BODY ALONE.
+           (STL HAS NO COLORS: USE 3MF FOR 2 COLORS.)
+
+KEYS
+ Q / E ........ ROTATE -/+ 5 DEG  (SHIFT = 1 DEG)
+ [ / ] ........ SIZE -/+ 5%
+ ARROWS ....... NUDGE 0.5 MM  (SHIFT = 2 MM)
+ LEFT MOUSE ... DRAG THE STAMP = MOVE IT
+                + SHIFT: LOCK TO THE FIRST DIRECTION MOVED
+                (HORIZONTAL OR VERTICAL) UNTIL SHIFT IS UP
+                DOUBLE-CLICK THE MODEL = PUT STAMP THERE
+ CENTER H/V ... CENTER THE STAMP ON ITS FACE
+ RIGHT MOUSE .. ORBIT CAMERA
+ MIDDLE MOUSE . PAN CAMERA
+ WHEEL ........ ZOOM
+ CTRL+Z ....... UNDO
+ CTRL+Y ....... REDO  (ALSO CTRL+SHIFT+Z)
+ M ............ MIRROR
+ F ............ FLIP STAMP TO THE OPPOSITE SIDE
+                (E.G. TOP -> FACE ON THE PRINT BED)
+ PUT ON FACE .. TOP/BOTTOM/FRONT/BACK/LEFT/RIGHT
+                BUTTONS JUMP THE STAMP TO THAT SIDE
+ HOME / F7 .... RESET VIEW
+ F10 .......... CRT FX: LITE / FULL WARP / OFF
+ ESC .......... CLOSE THIS
+
+TRACING (PNG / JPG, AND SVG BY DEFAULT)
+ THE IMAGE IS TURNED INTO OUTLINES. AUTO USES
+ TRANSPARENCY IF THE PNG HAS IT, ELSE DARK PIXELS.
+ TUNE THRESHOLD / INVERT UNTIL THE PREVIEW LOOKS
+ RIGHT. "EXACT VECTOR PATHS" USES SVG FILLS AS-IS
+ (BEST FOR CLEAN LOGOS WITHOUT OVERLAPS).
+
+UNITS ARE MILLIMETRES. THE MODEL IS CENTERED ON
+THE BED (Z = 0) WHEN LOADED.</pre>
+    <button class="btn" data-act="closeHelp">OK</button>
+  </section>
+</div>
+
+<div id="boot"><pre id="bootTxt"></pre></div>
+
+<input type="file" id="fStl" accept=".stl,.3mf" multiple hidden>
+<input type="file" id="fImg" accept=".svg,.png,.jpg,.jpeg,.webp,.gif,.bmp,image/*" hidden>
+
+<script>
+  // CRT barrel map: R/G encode how far each pixel samples outward (stronger toward the corners)
+  (function () {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(256, 256);
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+      const nx = x / 255 * 2 - 1, ny = y / 255 * 2 - 1, r2 = nx * nx + ny * ny;
+      const i = (y * 256 + x) * 4;
+      img.data[i] = 128 + nx * r2 * 0.5 * 127;
+      img.data[i + 1] = 128 + ny * r2 * 0.5 * 127;
+      img.data[i + 2] = 128;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const fe = document.getElementById('warpMap');
+    fe.setAttribute('href', c.toDataURL());
+    window.__sizeWarp = () => {
+      const ui = document.getElementById('ui');
+      const r = ui.getBoundingClientRect();
+      fe.setAttribute('width', r.width);
+      fe.setAttribute('height', Math.max(r.height, ui.scrollHeight));
+    };
+    window.__sizeWarp();
+    addEventListener('resize', window.__sizeWarp);
+  })();
+
+  // boot text runs before (and independently of) the 3D modules
+  (function () {
+    const lines = [
+      'AMBERTEK BIOS (C) 1986  REV 2.86',
+      'CPU: 80286 @ 12 MHZ ............ OK',
+      'MEMORY TEST: 640K .............. OK',
+      'MATH COPROCESSOR ............... FOUND',
+      '',
+      'C:\\> CD STAMPER',
+      'C:\\STAMPER> LOAD THREE.SYS',
+      'C:\\STAMPER> LOAD CSG.DRV',
+      'C:\\STAMPER> STAMPER.EXE',
+      ''
+    ];
+    const el = document.getElementById('bootTxt');
+    let i = 0, typed = false, ready = false;
+    function next() {
+      if (i >= lines.length) { typed = true; finish(); return; }
+      el.textContent += lines[i++] + '\n';
+      setTimeout(next, 70 + Math.random() * 90);
+    }
+    function finish() {
+      if (!typed || !ready) return;
+      document.getElementById('boot').classList.add('off');
+      document.getElementById('ui').classList.add('poweron');
+      setTimeout(() => document.getElementById('boot').remove(), 400);
+    }
+    window.__bootReady = () => { ready = true; finish(); };
+    document.getElementById('boot').addEventListener('click', () => { i = lines.length; });
+    setTimeout(() => {
+      if (!ready) el.textContent += '\nERROR: MODULES FAILED TO LOAD.\nAN INTERNET CONNECTION IS NEEDED FOR THE 3D LIBRARIES.\n';
+    }, 15000);
+    next();
+  })();
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { acceleratedRaycast } from 'three-mesh-bvh';
+import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
+import { zipSync, unzipSync, strToU8 } from 'fflate';
+
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const DEG = Math.PI / 180;
+const V2 = THREE.Vector2, V3 = THREE.Vector3;
+
+/* ============================================================
+   PARAMETERS
+   ============================================================ */
+const P = {
+  trSource: 'auto', threshold: 128, invert: false, smooth: 0.8, curve: 0, despeckle: 6, res: 512, svgVector: false,
+  size: 30, rot: 0, mirror: false, follow: true, conform: true,
+  mode: 'relief', relief: 1.2, sink: 0.6, depth: 1.0, through: false, inlay: 0.6,
+  colModel: '#d6d6d6', colArt: '#ff7a00',
+  autoBuild: true,
+};
+const TRACE_KEYS = new Set(['trSource', 'threshold', 'invert', 'smooth', 'curve', 'despeckle', 'res', 'svgVector']);
+const SWATCHES = ['#111111', '#f2f2f2', '#8a8a8a', '#d6d6d6', '#c8102e', '#ff7a00', '#ffd21f', '#2fa84f', '#2a62d4', '#7d3cc8', '#ff6fae', '#6b4a2b'];
+
+let model = null;     // { geom, brush, name, size, diag }
+let artSrc = null;    // { kind: 'svg'|'raster', name, text?, img? }
+let art = null;       // { shapes: [{ outer: V2[], holes: V2[][] }], w, h, cache }
+let result = null;    // { base, stamp, brush, mode }
+const place = { p: null, n: new V3(0, 0, 1), ref: new V3(0, 1, 0) };
+let dragging = false, buildTimer = 0, retraceTimer = 0, retraceToken = 0;
+
+/* ============================================================
+   LOG / STATUS
+   ============================================================ */
+const logEl = $('#log');
+function log(msg, cls) {
+  const d = document.createElement('div');
+  d.textContent = 'C:\\> ' + msg;
+  if (cls) d.className = cls;
+  logEl.append(d);
+  while (logEl.children.length > 60) logEl.firstChild.remove();
+  logEl.scrollTop = logEl.scrollHeight;
+  $('#cmd').textContent = msg.length > 48 ? msg.slice(0, 48) + '...' : msg;
+}
+const fmt = (v, d = 1) => (+v).toFixed(d);
+
+function updateHud() {
+  const parts = [P.mode.toUpperCase()];
+  if (art) parts.push(`${fmt(art.w * P.size)}x${fmt(art.h * P.size)}MM`, `ROT ${fmt(P.rot, 0)}\u00b0`);
+  if (place.p && art) parts.push(`@ ${fmt(place.p.x)},${fmt(place.p.y)},${fmt(place.p.z)}`);
+  $('#hudL').textContent = parts.join('  \u00b7  ');
+  $('#vpMsg').hidden = !!model && !!art;
+  if (!model) $('#vpMsg').innerHTML = 'NO MODEL LOADED<br>PRESS F2 OR DROP AN .STL';
+  else if (!art) $('#vpMsg').innerHTML = 'MODEL OK<br>NOW LOAD AN IMAGE (F3)';
+  $('#viewport').classList.toggle('placing', !!model && !!art);
+}
+
+setInterval(() => {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  $('#clock').textContent = `${p(d.getMonth() + 1)}-${p(d.getDate())}-${String(d.getFullYear()).slice(2)}  ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}, 1000);
+
+const sizeWarp = () => window.__sizeWarp?.();
+
+/* ============================================================
+   THREE SETUP
+   ============================================================ */
+const vp = $('#viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x080503);
+vp.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 5000);
+camera.up.set(0, 0, 1);
+camera.position.set(120, -160, 110);
+scene.add(camera);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.12;
+// left button belongs to the stamp; right orbits, middle pans, wheel zooms
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+// no Windows autoscroll icon on middle click
+renderer.domElement.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x2a2018, 1.5);
+hemi.position.set(0, 0, 1);
+scene.add(hemi);
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+keyLight.position.set(0.6, 0.8, 0.5);
+keyLight.target.position.set(0, 0, -1);
+camera.add(keyLight, keyLight.target);
+const rim = new THREE.DirectionalLight(0xfff0e0, 0.6);
+rim.position.set(-1, 1, -0.4);
+scene.add(rim);
+
+let grid = null;
+function setGrid(extent) {
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  const size = Math.max(50, Math.ceil(extent * 2 / 10) * 10);
+  grid = new THREE.GridHelper(size, size / 5, 0x7a3000, 0x2a1000);
+  grid.rotation.x = Math.PI / 2;
+  grid.position.z = -0.01;
+  scene.add(grid);
+}
+setGrid(100);
+
+const matModel = new THREE.MeshStandardMaterial({ color: P.colModel, flatShading: true, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide });
+const matArt = new THREE.MeshStandardMaterial({ color: P.colArt, flatShading: true, roughness: 0.45, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+const matGhost = new THREE.MeshStandardMaterial({ color: P.colArt, flatShading: true, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+
+const modelMesh = new THREE.Mesh(new THREE.BufferGeometry(), matModel);
+const artMesh = new THREE.Mesh(new THREE.BufferGeometry(), matArt);
+const baseMesh = new THREE.Mesh(new THREE.BufferGeometry(), matModel);
+const stampMesh = new THREE.Mesh(new THREE.BufferGeometry(), matArt);
+const resultGroup = new THREE.Group();
+resultGroup.add(baseMesh, stampMesh);
+modelMesh.visible = artMesh.visible = resultGroup.visible = false;
+artMesh.renderOrder = 2;
+// outline of the part hovered in the parts list
+const highlight = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xff8400, wireframe: true, transparent: true, opacity: 0.45, depthTest: false }));
+highlight.visible = false;
+highlight.renderOrder = 5;
+scene.add(modelMesh, artMesh, resultGroup, highlight);
+
+function layoutViewport() {
+  const r = $('#vpSlot').getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return;
+  Object.assign(vp.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  renderer.setSize(r.width, r.height);
+  camera.aspect = r.width / r.height;
+  camera.updateProjectionMatrix();
+  sizeWarp();
+}
+new ResizeObserver(layoutViewport).observe($('#vpSlot'));
+addEventListener('resize', () => { layoutViewport(); drawPreview(); });
+$('#ui').addEventListener('scroll', layoutViewport);
+layoutViewport();
+
+renderer.setAnimationLoop(() => {
+  stepCamTween();
+  controls.update();
+  // the bed grid sits on the model's base: hide it when looking from below
+  if (grid) grid.visible = camera.position.z > 0.01;
+  renderer.render(scene, camera);
+});
+
+const evaluator = new Evaluator();
+evaluator.attributes = ['position'];
+evaluator.useGroups = false;
+
+/* ============================================================
+   MODEL
+   ============================================================ */
+// every loaded mesh is a part (non-indexed, position only, file coordinates);
+// the working model is the merge of the parts that are switched on
+let parts = [], modelName = '';
+let partUid = 0;
+const partRegistry = new Map(); // every part of the current file, deleted ones too (undo)
+let src3mf = null, removedSrcs = []; // original 3MF package (if any) and parts the user deleted from it
+const modelOffset = new V3();
+
+function cleanGeom(g) {
+  for (const k of Object.keys(g.attributes)) if (k !== 'position') g.deleteAttribute(k);
+  return g.index ? g.toNonIndexed() : g;
+}
+const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
+
+function setParts(list, name, src = null) {
+  for (const p of partRegistry.values()) p.geom.dispose();
+  partRegistry.clear();
+  list.forEach((p, i) => { p.uid = ++partUid; p.orig = i; partRegistry.set(p.uid, p); });
+  history.length = 0;
+  histIndex = -1;
+  parts = list;
+  modelName = name;
+  src3mf = src;
+  removedSrcs = [];
+  $('#exp3mfLabel').textContent = src ? 'F9 EXPORT 3MF (KEEP PROJECT)' : 'F9 EXPORT 3MF (2 COLOR)';
+  const tris = parts.reduce((s, p) => s + triCount(p.geom), 0);
+  log(`LOADED ${name}: ${parts.length} PART${parts.length === 1 ? '' : 'S'}, ${tris.toLocaleString()} TRIS`);
+  renderParts();
+  rebuildModel(true);
+}
+
+function rebuildModel(fresh) {
+  const on = parts.filter(p => p.on);
+  clearResult();
+  if (model) model.geom.dispose();
+  if (!on.length) {
+    model = null;
+    modelMesh.visible = false;
+    $('#stlInfo').textContent = parts.length ? `${modelName}\nNO PARTS SELECTED` : 'NO MODEL';
+    markDirty();
+    return;
+  }
+  let geom = on.length === 1 ? on[0].geom.clone() : mergeGeometries(on.map(p => p.geom));
+  geom = mergeVertices(geom, 1e-4);
+  geom.computeBoundingBox();
+  const c = geom.boundingBox.getCenter(new V3());
+  const prevOffset = modelOffset.clone();
+  modelOffset.set(-c.x, -c.y, -geom.boundingBox.min.z);
+  geom.translate(modelOffset.x, modelOffset.y, modelOffset.z);
+  geom.computeBoundingBox();
+  geom.computeBoundingSphere();
+  highlight.position.copy(modelOffset);
+
+  const brush = new Brush(geom);
+  brush.updateMatrixWorld();
+  brush.prepareGeometry(); // builds the BVH used both for CSG and for raycasting
+
+  const size = geom.boundingBox.getSize(new V3());
+  model = { geom, brush, name: modelName, size, diag: size.length() };
+  modelMesh.geometry = geom;
+  modelMesh.visible = true;
+
+  warmWorker();
+  const tris = triCount(geom);
+  $('#stlInfo').textContent = `${modelName}\n${fmt(size.x)} x ${fmt(size.y)} x ${fmt(size.z)} MM\n${tris.toLocaleString()} TRIS`;
+  ui.size.range.max = Math.max(50, Math.ceil(model.diag));
+  setGrid(Math.max(size.x, size.y));
+  if (fresh) {
+    if (tris > 300000 && P.autoBuild) {
+      P.autoBuild = false; ui.autoBuild.set(false);
+      log('BIG MESH: AUTO BUILD OFF. PRESS F5 TO BUILD.');
+    }
+    fitCamera();
+    if (art) placeDefault(true);
+  } else if (place.p) {
+    // keep the stamp on the same spot of the geometry after recentering
+    place.p.add(modelOffset).sub(prevOffset);
+  }
+  markDirty();
+}
+
+function renderParts() {
+  const el = $('#parts');
+  if (!parts.length) { el.innerHTML = ''; return; }
+  const multi = parts.length > 1;
+  el.innerHTML = (multi ? `<div class="row"><button class="btn" data-pa="all">ALL</button><button class="btn" data-pa="none">NONE</button></div>` : '') +
+    parts.map((p, i) => `<div class="part${p.on ? '' : ' off'}" data-i="${i}" title="${p.name.replace(/"/g, '&quot;')}">
+      <span class="pbox">${p.on ? '[X]' : '[ ]'}</span><span class="pname">${p.name.replace(/</g, '&lt;')}</span>
+      <em>${(triCount(p.geom) / 1000).toFixed(1)}K</em><button class="pdel" data-pd="${i}" title="DELETE PART">DEL</button></div>`).join('');
+}
+
+$('#parts').addEventListener('click', e => {
+  const pa = e.target.closest('[data-pa]')?.dataset.pa;
+  if (pa) { parts.forEach(p => p.on = pa === 'all'); renderParts(); rebuildModel(false); return; }
+  const del = e.target.closest('[data-pd]');
+  if (del) {
+    const [p] = parts.splice(+del.dataset.pd, 1);
+    if (p.src) removedSrcs.push(p.src);
+    log('DELETED PART ' + p.name); // geometry kept alive for undo
+    highlight.visible = false;
+    renderParts();
+    rebuildModel(false);
+    return;
+  }
+  const row = e.target.closest('.part');
+  if (row) { const p = parts[+row.dataset.i]; p.on = !p.on; renderParts(); rebuildModel(false); }
+});
+$('#parts').addEventListener('mouseover', e => {
+  const row = e.target.closest('.part');
+  if (!row) { highlight.visible = false; return; }
+  highlight.geometry = parts[+row.dataset.i].geom;
+  highlight.visible = true;
+});
+$('#parts').addEventListener('mouseleave', () => { highlight.visible = false; });
+
+/* ---------- 3MF import ---------- */
+const UNIT_MM = { micron: 0.001, millimeter: 1, centimeter: 10, meter: 1000, inch: 25.4, foot: 304.8 };
+
+function parseTransform(s) {
+  const m = new THREE.Matrix4();
+  if (!s) return m;
+  const a = s.trim().split(/\s+/).map(Number);
+  if (a.length !== 12) return m;
+  // 3MF is row-vector 3x4: p' = p * M
+  m.set(a[0], a[3], a[6], a[9], a[1], a[4], a[7], a[10], a[2], a[5], a[8], a[11], 0, 0, 0, 1);
+  return m;
+}
+
+function meshFromXML(meshEl) {
+  const vs = meshEl.getElementsByTagName('vertex');
+  const v = new Float32Array(vs.length * 3);
+  for (let i = 0; i < vs.length; i++) {
+    v[i * 3] = +vs[i].getAttribute('x'); v[i * 3 + 1] = +vs[i].getAttribute('y'); v[i * 3 + 2] = +vs[i].getAttribute('z');
+  }
+  const ts = meshEl.getElementsByTagName('triangle');
+  const pos = new Float32Array(ts.length * 9);
+  for (let i = 0; i < ts.length; i++) {
+    const t = ts[i];
+    const ids = [+t.getAttribute('v1'), +t.getAttribute('v2'), +t.getAttribute('v3')];
+    for (let k = 0; k < 3; k++) {
+      const j = ids[k] * 3;
+      pos[i * 9 + k * 3] = v[j]; pos[i * 9 + k * 3 + 1] = v[j + 1]; pos[i * 9 + k * 3 + 2] = v[j + 2];
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return g;
+}
+
+const zipKey = (files, p) => {
+  p = (p || '').replace(/^\//, '').toLowerCase();
+  return Object.keys(files).find(f => f.toLowerCase() === p);
+};
+const xmlDoc = t => new DOMParser().parseFromString(t, 'application/xml');
+const kids = (el, name) => [...el.children].filter(c => c.localName === name);
+const metaVal = (el, key) => kids(el, 'metadata').find(m => m.getAttribute('key') === key)?.getAttribute('value');
+
+// returns parts; each keeps `src` so the export can write back into the original file
+function parse3MF(buf, fname) {
+  const files = unzipSync(new Uint8Array(buf));
+  const dec = new TextDecoder();
+  const read = p => { const k = zipKey(files, p); return k ? dec.decode(files[k]) : null; };
+  const xml = xmlDoc;
+
+  let root = '3D/3dmodel.model';
+  const rels = read('_rels/.rels');
+  if (rels) {
+    const r = [...xml(rels).getElementsByTagName('Relationship')].find(r => /3dmodel$/i.test(r.getAttribute('Type') || ''));
+    if (r) root = r.getAttribute('Target');
+  }
+
+  // slicer metadata (Bambu / Orca / Prusa) carries the names users see
+  const objNames = {}, partNames = {}, partTypes = {}, prusaVols = {};
+  const bambuCfg = read('Metadata/model_settings.config');
+  if (bambuCfg) for (const o of xml(bambuCfg).getElementsByTagName('object')) {
+    const nm = metaVal(o, 'name');
+    if (nm) objNames[o.getAttribute('id')] = nm;
+    for (const p of o.getElementsByTagName('part')) {
+      const pn = metaVal(p, 'name');
+      if (pn) partNames[p.getAttribute('id')] = pn;
+      partTypes[p.getAttribute('id')] = p.getAttribute('subtype') || 'normal_part';
+    }
+  }
+  // PrusaSlicer keeps every volume of an object in one mesh, split by triangle ranges
+  const prusaCfg = read('Metadata/Slic3r_PE_model.config');
+  if (prusaCfg) for (const o of xml(prusaCfg).getElementsByTagName('object')) {
+    const id = o.getAttribute('id');
+    const nm = metaVal(o, 'name');
+    if (nm) objNames[id] = nm;
+    const vols = kids(o, 'volume').map(v => ({
+      first: +v.getAttribute('firstid'), last: +v.getAttribute('lastid'),
+      name: metaVal(v, 'name') || '', type: metaVal(v, 'volume_type') || 'ModelPart',
+    }));
+    if (vols.length) prusaVols[id] = vols;
+  }
+
+  const docs = {};
+  const doc = path => {
+    path = path.replace(/^\//, '');
+    if (path in docs) return docs[path];
+    const t = read(path);
+    if (!t) return (docs[path] = null);
+    const d = xml(t);
+    const modelEl = d.getElementsByTagName('model')[0];
+    const scale = UNIT_MM[modelEl?.getAttribute('unit') || 'millimeter'] || 1;
+    const objs = new Map();
+    for (const o of d.getElementsByTagName('object')) {
+      const mesh = o.getElementsByTagName('mesh')[0];
+      objs.set(o.getAttribute('id'), {
+        name: o.getAttribute('name') || '',
+        geom: mesh ? meshFromXML(mesh) : null,
+        comps: [...o.getElementsByTagName('component')].map(c => ({
+          id: c.getAttribute('objectid'), path: c.getAttribute('p:path'), m: parseTransform(c.getAttribute('transform')),
+        })),
+      });
+    }
+    const items = [...d.getElementsByTagName('item')].map(it => ({
+      id: it.getAttribute('objectid'), path: it.getAttribute('p:path'), m: parseTransform(it.getAttribute('transform')),
+    }));
+    return (docs[path] = { objs, items, scale });
+  };
+
+  const rootDoc = doc(root);
+  if (!rootDoc) throw new Error('NO 3D MODEL INSIDE THE 3MF');
+  let items = rootDoc.items.map((it, i) => ({ ...it, index: i }));
+  if (!items.length) items = [...rootDoc.objs.entries()].filter(([, o]) => o.geom).map(([id]) => ({ id, path: null, m: new THREE.Matrix4(), index: -1 }));
+
+  const out = [];
+  items.forEach((it, n) => {
+    const leaves = [];
+    const walk = (path, id, m, depth, parent) => {
+      const d = doc(path), o = d?.objs.get(id);
+      if (!o || depth > 10) return;
+      if (o.geom) {
+        const full = m.clone().multiply(new THREE.Matrix4().makeScale(d.scale, d.scale, d.scale));
+        const base = { path, objId: id, parent, itemIndex: it.index, topId: it.id, itemM: it.m.clone(), full };
+        const vols = !parent && zipKey(files, path) === zipKey(files, root) ? prusaVols[id] : null;
+        if (vols) {
+          const arr = o.geom.attributes.position.array;
+          vols.forEach((v, k) => {
+            const local = new THREE.BufferGeometry();
+            local.setAttribute('position', new THREE.BufferAttribute(arr.slice(v.first * 9, (v.last + 1) * 9), 3));
+            leaves.push({ name: v.name, on: v.type === 'ModelPart', geom: local.clone().applyMatrix4(full), src: { ...base, kind: 'prusa', vol: k, local } });
+          });
+        } else {
+          leaves.push({
+            name: partNames[id] || o.name,
+            // slicer modifiers / negative volumes aren't printable geometry: start them off
+            on: (partTypes[id] || 'normal_part') === 'normal_part',
+            geom: o.geom.clone().applyMatrix4(full),
+            src: { ...base, kind: parent ? 'comp' : 'item' },
+          });
+        }
+      }
+      o.comps.forEach((c, ci) => walk(c.path || path, c.id, m.clone().multiply(c.m), depth + 1, { path, objId: id, compIndex: ci }));
+    };
+    walk(it.path || root, it.id, it.m, 0, null);
+    const top = rootDoc.objs.get(it.id);
+    const itemName = objNames[it.id] || top?.name || `OBJECT ${n + 1}`;
+    leaves.forEach((l, k) => out.push({ ...l, name: leaves.length === 1 ? itemName : `${itemName} / ${l.name || 'PART ' + (k + 1)}` }));
+  });
+  if (!out.length) throw new Error('THE 3MF CONTAINS NO MESHES');
+  return { parts: out, src: { files, root, name: fname } };
+}
+
+function fitCamera() {
+  if (!model) return;
+  const r = Math.max(model.diag, 10);
+  controls.target.set(0, 0, model.size.z / 2);
+  camera.position.set(r * 0.85, -r * 1.15, model.size.z / 2 + r * 0.85);
+  camera.near = r / 500;
+  camera.far = r * 30;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+// STL -> one part, 3MF -> one part per mesh (+ the package, so it can be patched on export)
+async function modelParts(file) {
+  const buf = await file.arrayBuffer();
+  if (/\.3mf$/i.test(file.name)) {
+    const r = parse3MF(buf, file.name);
+    return { parts: r.parts.map(p => ({ ...p, geom: cleanGeom(p.geom) })), src: r.src };
+  }
+  return { parts: [{ name: file.name, geom: cleanGeom(new STLLoader().parse(buf)), on: true }], src: null };
+}
+
+async function loadModelFiles(files) {
+  try {
+    const loaded = [];
+    for (const f of files) loaded.push(await modelParts(f));
+    if (!restoringSession) {
+      const stored = await Promise.all(files.map(async f => ({ name: f.name, bytes: await f.arrayBuffer() })));
+      persist('models', { files: stored });
+    }
+    if (loaded.length === 1) return setParts(loaded[0].parts, files[0].name, loaded[0].src);
+    // several files at once: combine them as parts of one working model
+    setParts(loaded.flatMap(l => l.parts.map(p => ({ ...p, src: null }))), `${files.length} FILES`);
+    if (loaded.some(l => l.src)) log('MULTIPLE FILES: 3MF EXPORT WILL BE A NEW PROJECT');
+  } catch (e) {
+    console.error(e);
+    log('MODEL LOAD ERROR: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   IMAGE -> OUTLINES
+   ============================================================ */
+function loadImg(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('IMAGE DECODE FAILED'));
+    img.src = url;
+  });
+}
+
+async function svgToImage(text) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const svg = doc.documentElement;
+  if (svg.nodeName.toLowerCase() !== 'svg') throw new Error('NOT A VALID SVG');
+  const w = parseFloat(svg.getAttribute('width')), h = parseFloat(svg.getAttribute('height'));
+  const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  let aspect = 1;
+  if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) aspect = vb[2] / vb[3];
+  else if (w > 0 && h > 0) { aspect = w / h; svg.setAttribute('viewBox', `0 0 ${w} ${h}`); }
+  const R = 1536;
+  svg.setAttribute('width', aspect >= 1 ? R : R * aspect);
+  svg.setAttribute('height', aspect >= 1 ? R / aspect : R);
+  // data: URL keeps the canvas untainted, even when the page is opened from file://
+  return loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg)));
+}
+
+// boundary edges of filled pixels chained into closed loops (pixel corner coords, y down)
+function traceMask(mask, w, h) {
+  const W1 = w + 1;
+  const n1 = new Int32Array(W1 * (h + 1)).fill(-1), n2 = new Int32Array(W1 * (h + 1)).fill(-1);
+  const ex = [], ey = [], tx = [], ty = [];
+  const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
+  const add = (x0, y0, x1, y1) => {
+    const id = ex.length;
+    ex.push(x0); ey.push(y0); tx.push(x1); ty.push(y1);
+    const k = y0 * W1 + x0;
+    if (n1[k] < 0) n1[k] = id; else n2[k] = id;
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!mask[y * w + x]) continue;
+    if (!on(x, y - 1)) add(x, y, x + 1, y);
+    if (!on(x + 1, y)) add(x + 1, y, x + 1, y + 1);
+    if (!on(x, y + 1)) add(x + 1, y + 1, x, y + 1);
+    if (!on(x - 1, y)) add(x, y + 1, x, y);
+  }
+  const used = new Uint8Array(ex.length);
+  const loops = [];
+  for (let e = 0; e < ex.length; e++) {
+    if (used[e]) continue;
+    const pts = [];
+    let cur = e;
+    while (cur >= 0 && !used[cur]) {
+      used[cur] = 1;
+      pts.push([ex[cur], ey[cur]]);
+      const k = ty[cur] * W1 + tx[cur];
+      const a = n1[k] >= 0 && !used[n1[k]] ? n1[k] : -1;
+      const b = n2[k] >= 0 && !used[n2[k]] ? n2[k] : -1;
+      if (a >= 0 && b >= 0) {
+        // saddle: take the right turn so diagonal pixels become separate loops
+        const dx = tx[cur] - ex[cur], dy = ty[cur] - ey[cur];
+        cur = (tx[a] - ex[a] === -dy && ty[a] - ey[a] === dx) ? a : b;
+      } else cur = a >= 0 ? a : b;
+    }
+    if (pts.length >= 4) loops.push(pts);
+  }
+  return loops;
+}
+
+function segDist(p, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const l2 = vx * vx + vy * vy;
+  let t = l2 ? ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy);
+}
+
+function dpClosed(pts, tol) {
+  const n = pts.length;
+  let m = 0, md = -1;
+  for (let i = 1; i < n; i++) {
+    const d = (pts[i][0] - pts[0][0]) ** 2 + (pts[i][1] - pts[0][1]) ** 2;
+    if (d > md) { md = d; m = i; }
+  }
+  const keep = new Uint8Array(n);
+  keep[0] = keep[m] = 1;
+  const stack = [[0, m], [m, n]];
+  while (stack.length) {
+    const [s, e] = stack.pop();
+    const A = pts[s], B = pts[e % n];
+    let best = -1, bd = tol;
+    for (let i = s + 1; i < e; i++) {
+      const d = segDist(pts[i], A, B);
+      if (d > bd) { bd = d; best = i; }
+    }
+    if (best >= 0) { keep[best] = 1; stack.push([s, best], [best, e]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+
+function simplifyLoop(pts, tol, rounds) {
+  const n = pts.length, c = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[(i - 1 + n) % n], q = pts[i], r = pts[(i + 1) % n];
+    if ((q[0] - p[0]) * (r[1] - q[1]) - (q[1] - p[1]) * (r[0] - q[0]) !== 0) c.push(q);
+  }
+  let out = tol > 0 && c.length > 6 ? dpClosed(c, tol) : c;
+  for (let k = 0; k < rounds && out.length >= 3; k++) {
+    const nx = [];
+    for (let i = 0; i < out.length; i++) {
+      const a = out[i], b = out[(i + 1) % out.length];
+      nx.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    out = nx;
+  }
+  return out;
+}
+
+function pip(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+// loops of [x,y] (y down) -> nested shapes normalized to a unit box centred on 0
+function buildShapes(loops, minArea) {
+  const items = [];
+  for (const raw of loops) {
+    const v = [];
+    for (const [x, y] of raw) {
+      const p = new V2(x, -y);
+      if (!v.length || !v[v.length - 1].equals(p)) v.push(p);
+    }
+    while (v.length > 1 && v[0].equals(v[v.length - 1])) v.pop();
+    if (v.length < 3) continue;
+    const abs = Math.abs(THREE.ShapeUtils.area(v));
+    if (abs <= minArea) continue;
+    const bb = new THREE.Box2().setFromPoints(v);
+    items.push({ v, abs, bb, parent: -1, depth: 0 });
+  }
+  items.sort((a, b) => b.abs - a.abs);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const tx = (it.v[0].x + it.v[1].x) / 2, ty = (it.v[0].y + it.v[1].y) / 2;
+    for (let j = i - 1; j >= 0; j--) {
+      const o = items[j];
+      if (o.bb.containsBox(it.bb) && pip(tx, ty, o.v)) { it.parent = j; it.depth = o.depth + 1; break; }
+    }
+  }
+  const shapes = [], byIndex = new Map();
+  items.forEach((it, i) => {
+    if (it.depth % 2 === 0) { const s = { outer: it.v, holes: [] }; byIndex.set(i, s); shapes.push(s); }
+    else byIndex.get(it.parent)?.holes.push(it.v);
+  });
+  if (!shapes.length) return null;
+  const bb = new THREE.Box2();
+  shapes.forEach(s => s.outer.forEach(p => bb.expandByPoint(p)));
+  const c = bb.getCenter(new V2()), sz = bb.getSize(new V2());
+  const k = 1 / Math.max(sz.x, sz.y);
+  for (const s of shapes) for (const loop of [s.outer, ...s.holes]) for (const p of loop) p.sub(c).multiplyScalar(k);
+  return { shapes, w: sz.x * k, h: sz.y * k, cache: {} };
+}
+
+function rasterShapes(img, isSvg) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const sc = P.res / Math.max(iw, ih);
+  const w = Math.max(1, Math.round(iw * sc)), h = Math.max(1, Math.round(ih * sc)), pad = 2;
+  const W = w + pad * 2, H = h + pad * 2;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, pad, pad, w, h);
+  const d = ctx.getImageData(0, 0, W, H).data;
+
+  let hasAlpha = false;
+  if (!isSvg) for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { hasAlpha = true; break; }
+  const src = P.trSource !== 'auto' ? P.trSource : (!isSvg && hasAlpha ? 'alpha' : 'dark');
+  const thr = P.threshold;
+  const mask = new Uint8Array(W * H);
+  for (let y = pad; y < pad + h; y++) for (let x = pad; x < pad + w; x++) {
+    const i = y * W + x, a = d[i * 4 + 3];
+    const lum = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    let on;
+    if (src === 'alpha') on = a >= thr;
+    else if (src === 'dark') on = (lum * a + 255 * (255 - a)) / 255 < thr;
+    else on = lum * a / 255 > thr;
+    mask[i] = (on !== P.invert) ? 1 : 0;
+  }
+  const loops = traceMask(mask, W, H).map(l => simplifyLoop(l, P.smooth, P.curve)).filter(l => l.length >= 3);
+  return { built: buildShapes(loops, P.despeckle), src };
+}
+
+function vectorShapes(text) {
+  const data = new SVGLoader().parse(text);
+  const loops = [];
+  for (const path of data.paths) {
+    const fill = path.userData?.style?.fill;
+    if (!fill || fill === 'none' || fill === 'transparent') continue;
+    for (const sh of SVGLoader.createShapes(path)) {
+      const ex = sh.extractPoints(16);
+      loops.push(ex.shape.map(p => [p.x, p.y]));
+      for (const hole of ex.holes) loops.push(hole.map(p => [p.x, p.y]));
+    }
+  }
+  return buildShapes(loops, 0);
+}
+
+// live while dragging trace sliders: at most one retrace per frame
+function retraceSoon() {
+  if (retraceTimer) return;
+  retraceTimer = requestAnimationFrame(() => { retraceTimer = 0; retrace(); });
+}
+
+async function retrace() {
+  if (!artSrc) return;
+  const token = ++retraceToken;
+  try {
+    let built = null, how = '';
+    if (artSrc.kind === 'svg' && P.svgVector) {
+      built = vectorShapes(artSrc.text);
+      how = 'VECTOR';
+      if (!built) log('SVG HAS NO FILLED PATHS - FALLING BACK TO TRACE');
+    }
+    if (!built) {
+      if (artSrc.kind === 'svg' && !artSrc.img) artSrc.img = await svgToImage(artSrc.text);
+      if (token !== retraceToken) return;
+      const r = rasterShapes(artSrc.img, artSrc.kind === 'svg');
+      built = r.built;
+      how = 'TRACE/' + r.src.toUpperCase();
+    }
+    if (token !== retraceToken) return;
+    if (!built) {
+      art = null;
+      $('#traceInfo').textContent = 'NOTHING TRACED - ADJUST THRESHOLD / INVERT';
+      drawPreview();
+      markDirty();
+      return;
+    }
+    const first = !art;
+    art = built;
+    let pts = 0, holes = 0;
+    for (const s of art.shapes) { pts += s.outer.length; holes += s.holes.length; s.holes.forEach(h => pts += h.length); }
+    $('#traceInfo').textContent = `${how}: ${art.shapes.length} SHAPES, ${holes} HOLES, ${pts} PTS`;
+    drawPreview();
+    if (first && model && !place.p) placeDefault(true);
+    markDirty();
+  } catch (e) {
+    console.error(e);
+    log('IMAGE ERROR: ' + e.message, 'err');
+  }
+}
+
+function drawPreview() {
+  const cv = $('#trace');
+  const dpr = Math.min(devicePixelRatio, 2);
+  const cw = cv.width = Math.round(cv.clientWidth * dpr), ch = cv.height = Math.round(cv.clientHeight * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, cw, ch);
+  if (!art) {
+    ctx.fillStyle = '#6e2e00';
+    ctx.font = `${20 * dpr}px VT323, monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(artSrc ? 'NOTHING TRACED' : 'NO IMAGE', cw / 2, ch / 2 + 6 * dpr);
+    return;
+  }
+  const s = 0.9 * Math.min(cw / art.w, ch / art.h);
+  ctx.save();
+  ctx.translate(cw / 2, ch / 2);
+  ctx.scale(s * (P.mirror ? -1 : 1), -s);
+  const path = new Path2D();
+  for (const sh of art.shapes) for (const loop of [sh.outer, ...sh.holes]) {
+    path.moveTo(loop[0].x, loop[0].y);
+    for (let i = 1; i < loop.length; i++) path.lineTo(loop[i].x, loop[i].y);
+    path.closePath();
+  }
+  ctx.fillStyle = '#ff8400';
+  ctx.fill(path, 'evenodd');
+  ctx.lineWidth = 1.2 / s;
+  ctx.strokeStyle = '#ffc58a';
+  ctx.stroke(path);
+  ctx.restore();
+}
+
+/* ============================================================
+   STAMP GEOMETRY
+   ============================================================ */
+const DENSIFY = 0.01, STEINER = 1 / 36;
+
+function densify(loop, maxLen) {
+  const out = [];
+  for (let i = 0; i < loop.length; i++) {
+    const a = loop[i], b = loop[(i + 1) % loop.length];
+    out.push(a);
+    const k = Math.floor(a.distanceTo(b) / maxLen);
+    for (let j = 1; j <= k; j++) out.push(a.clone().lerp(b, j / (k + 1)));
+  }
+  return out;
+}
+
+// interior points so the caps can bend with the surface
+function steinerPoints(outer, holes) {
+  const g = STEINER, min2 = (g * 0.45) ** 2;
+  const hash = new Map();
+  const key = (i, j) => i * 73856093 ^ j * 19349663;
+  for (const loop of [outer, ...holes]) for (const p of loop) {
+    const k = key(Math.floor(p.x / g), Math.floor(p.y / g));
+    if (!hash.has(k)) hash.set(k, []);
+    hash.get(k).push(p);
+  }
+  const bb = new THREE.Box2().setFromPoints(outer);
+  const out = [];
+  for (let x = Math.ceil(bb.min.x / g) * g + g * 0.5; x < bb.max.x; x += g) {
+    for (let y = Math.ceil(bb.min.y / g) * g + g * 0.5; y < bb.max.y; y += g) {
+      const ci = Math.floor(x / g), cj = Math.floor(y / g);
+      let near = false;
+      for (let di = -1; di <= 1 && !near; di++) for (let dj = -1; dj <= 1 && !near; dj++) {
+        const list = hash.get(key(ci + di, cj + dj));
+        if (list) for (const p of list) if ((p.x - x) ** 2 + (p.y - y) ** 2 < min2) { near = true; break; }
+      }
+      if (near || !pip(x, y, outer) || holes.some(h => pip(x, y, h))) continue;
+      out.push(new V2(x, y));
+    }
+  }
+  return out;
+}
+
+// 2D triangulation per shape, cached per mirror/conform combination
+function getPrep() {
+  const key = (P.mirror ? 'm' : 'n') + (P.conform ? 'c' : 'p');
+  if (art.cache[key]) return art.cache[key];
+  const out = [];
+  for (const sh of art.shapes) {
+    const mx = P.mirror ? -1 : 1;
+    const map = loop => loop.map(p => new V2(p.x * mx, p.y));
+    let outer = map(sh.outer), holes = sh.holes.map(map);
+    if (P.conform) { outer = densify(outer, DENSIFY); holes = holes.map(h => densify(h, DENSIFY)); }
+    if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
+    for (const h of holes) if (!THREE.ShapeUtils.isClockWise(h)) h.reverse();
+    const steiner = P.conform ? steinerPoints(outer, holes) : [];
+    const faces = THREE.ShapeUtils.triangulateShape(outer.slice(), [...holes.map(h => h.slice()), ...steiner.map(p => [p])]);
+    const all = [outer, ...holes].flat().concat(steiner);
+    const pts = new Float64Array(all.length * 2);
+    all.forEach((p, i) => { pts[i * 2] = p.x; pts[i * 2 + 1] = p.y; });
+    const tris = [];
+    for (const [a, b, c] of faces) {
+      const cr = (all[b].x - all[a].x) * (all[c].y - all[a].y) - (all[b].y - all[a].y) * (all[c].x - all[a].x);
+      if (cr === 0) continue;
+      if (cr > 0) tris.push(a, b, c); else tris.push(a, c, b);
+    }
+    const loops = [];
+    let s = 0;
+    for (const l of [outer, ...holes]) { loops.push([s, l.length]); s += l.length; }
+    out.push({ n: all.length, pts, tris, loops });
+  }
+  return (art.cache[key] = out);
+}
+
+function upRef(n) {
+  const up = Math.abs(n.z) > 0.98 ? new V3(0, 1, 0) : new V3(0, 0, 1);
+  return up.addScaledVector(n, -up.dot(n)).normalize();
+}
+function transportRef(n) {
+  const r = place.ref.clone().addScaledVector(n, -place.ref.dot(n));
+  return r.lengthSq() < 0.04 ? upRef(n) : r.normalize();
+}
+
+function frame() {
+  const N = place.n, R = place.ref;
+  const c = Math.cos(P.rot * DEG), s = Math.sin(P.rot * DEG);
+  const U0 = new V3().crossVectors(R, N);
+  const U = U0.clone().multiplyScalar(c).addScaledVector(R, s);
+  const V = R.clone().multiplyScalar(c).addScaledVector(U0, -s);
+  return { O: place.p, N, U, V };
+}
+
+const rc = new THREE.Raycaster();
+const _o = new V3(), _d = new V3();
+function projectToSurface(W, N, reach, out) {
+  _o.copy(W).addScaledVector(N, reach);
+  _d.copy(N).negate();
+  rc.set(_o, _d);
+  rc.far = reach * 3;
+  const hits = rc.intersectObject(modelMesh, false);
+  let best = null, bd = Infinity;
+  for (const h of hits) {
+    const dd = Math.abs(h.distance - reach);
+    if (dd < bd) { bd = dd; best = h; }
+  }
+  return best ? out.copy(best.point) : out.copy(W);
+}
+
+// closed solid: caps follow the surface, offset +hTop / -hBot along the stamp normal
+function brushGeometry(hTop, hBot) {
+  const prep = getPrep();
+  const { O, N, U, V } = frame();
+  const S = P.size, reach = S * 0.6 + 2;
+  let nV = 0, nI = 0;
+  for (const sp of prep) {
+    nV += sp.n * 2;
+    nI += sp.tris.length * 2;
+    for (const [, len] of sp.loops) nI += len * 6;
+  }
+  const pos = new Float32Array(nV * 3), idx = new Uint32Array(nI);
+  const W = new V3(), s = new V3();
+  let vo = 0, io = 0;
+  for (const sp of prep) {
+    const n = sp.n, base = vo;
+    for (let i = 0; i < n; i++) {
+      W.copy(O).addScaledVector(U, sp.pts[i * 2] * S).addScaledVector(V, sp.pts[i * 2 + 1] * S);
+      if (P.conform) projectToSurface(W, N, reach, s); else s.copy(W);
+      const t = (base + i) * 3, b = (base + n + i) * 3;
+      pos[t] = s.x + N.x * hTop; pos[t + 1] = s.y + N.y * hTop; pos[t + 2] = s.z + N.z * hTop;
+      pos[b] = s.x - N.x * hBot; pos[b + 1] = s.y - N.y * hBot; pos[b + 2] = s.z - N.z * hBot;
+    }
+    const tr = sp.tris;
+    for (let i = 0; i < tr.length; i += 3) {
+      idx[io++] = base + tr[i]; idx[io++] = base + tr[i + 1]; idx[io++] = base + tr[i + 2];
+      idx[io++] = base + n + tr[i]; idx[io++] = base + n + tr[i + 2]; idx[io++] = base + n + tr[i + 1];
+    }
+    for (const [st, len] of sp.loops) {
+      for (let j = 0; j < len; j++) {
+        const a = st + j, b = st + (j + 1) % len;
+        const at = base + a, bt = base + b, ab = base + n + a, bb = base + n + b;
+        idx[io++] = ab; idx[io++] = bb; idx[io++] = bt;
+        idx[io++] = ab; idx[io++] = bt; idx[io++] = at;
+      }
+    }
+    vo += n * 2;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
+
+function previewHeights() {
+  if (P.mode === 'relief') return [P.relief, P.sink];
+  if (P.mode === 'cutout') return [0.05, P.through ? model.diag * 1.5 : P.depth];
+  return [0.04, P.inlay];
+}
+function buildHeights() {
+  if (P.mode === 'relief') return [P.relief, Math.max(P.sink, 0.05)];
+  if (P.mode === 'cutout') return [1, P.through ? model.diag * 1.5 : P.depth];
+  return [0.6, P.inlay];
+}
+
+const ready = () => !!(model && art && place.p);
+
+function showPreview() {
+  modelMesh.visible = !!model;
+  artMesh.visible = ready();
+  resultGroup.visible = false;
+}
+
+function updatePreview() {
+  if (!ready()) { showPreview(); updateHud(); return; }
+  const [ht, hb] = previewHeights();
+  const g = brushGeometry(ht, hb);
+  artMesh.geometry.dispose();
+  artMesh.geometry = g;
+  artMesh.material = P.mode === 'cutout' ? matGhost : matArt;
+  showPreview();
+  updateHud();
+}
+
+function clearResult() {
+  if (!result) return;
+  if (result.base !== model?.geom) result.base.dispose();
+  result.stamp?.dispose();
+  result = null;
+  baseMesh.geometry = new THREE.BufferGeometry();
+  stampMesh.geometry = new THREE.BufferGeometry();
+}
+
+function markDirty() {
+  buildSeq++;
+  cancelCSG();
+  clearResult();
+  $('#buildInfo').textContent = ready() ? 'PREVIEW (NOT BUILT)' : 'NOT BUILT';
+  updatePreview();
+  scheduleBuild();
+  noteChange();
+}
+
+/* ---------- undo / redo ----------
+   A snapshot is taken once things settle (not on every slider tick or drag frame). */
+const history = [];
+let histIndex = -1, histTimer = 0, restoring = false;
+const HIST_SKIP = new Set(['autoBuild']);
+
+function snapshot() {
+  const p = {};
+  for (const k of Object.keys(P)) if (!HIST_SKIP.has(k)) p[k] = P[k];
+  return {
+    P: p,
+    place: place.p ? { p: place.p.toArray(), n: place.n.toArray(), ref: place.ref.toArray() } : null,
+    ids: parts.map(x => x.uid),
+    on: parts.map(x => x.on),
+    removed: removedSrcs.slice(),
+  };
+}
+const snapKey = s => JSON.stringify([s.P, s.place, s.ids, s.on]);
+
+function commitHistory() {
+  clearTimeout(histTimer);
+  if (restoring) return;
+  const s = snapshot();
+  if (histIndex >= 0 && snapKey(history[histIndex]) === snapKey(s)) return;
+  history.splice(histIndex + 1);
+  history.push(s);
+  if (history.length > 150) history.shift();
+  histIndex = history.length - 1;
+  saveStateSoon();
+}
+
+function noteChange() {
+  if (restoring) return;
+  clearTimeout(histTimer);
+  histTimer = setTimeout(function check() {
+    if (dragging || holding) { histTimer = setTimeout(check, 250); return; }
+    commitHistory();
+  }, 350);
+}
+
+function restore(s) {
+  restoring = true;
+  try {
+    const traceChanged = [...TRACE_KEYS].some(k => P[k] !== s.P[k]);
+    const partsChanged = JSON.stringify([s.ids, s.on]) !== JSON.stringify([parts.map(x => x.uid), parts.map(x => x.on)]);
+    Object.assign(P, s.P);
+    for (const k of Object.keys(s.P)) ui[k]?.set(P[k]);
+    syncModeGroups();
+    matModel.color.set(P.colModel);
+    matArt.color.set(P.colArt);
+    matGhost.color.set(P.colArt);
+    if (partsChanged) {
+      parts = s.ids.map(id => partRegistry.get(id)).filter(Boolean);
+      parts.forEach((x, i) => x.on = s.on[i]);
+      removedSrcs = s.removed.slice();
+      renderParts();
+      rebuildModel(false);
+    }
+    if (s.place) {
+      place.p = new V3().fromArray(s.place.p);
+      place.n = new V3().fromArray(s.place.n);
+      place.ref = new V3().fromArray(s.place.ref);
+    } else place.p = null;
+    drawPreview();
+    if (traceChanged) retrace();
+    markDirty();
+  } finally {
+    restoring = false;
+  }
+}
+
+function undo() {
+  commitHistory(); // pending change becomes undoable first
+  if (histIndex <= 0) { log('NOTHING TO UNDO'); return; }
+  restore(history[--histIndex]);
+  saveStateSoon();
+  log('UNDO');
+}
+function redo() {
+  if (histIndex >= history.length - 1) { log('NOTHING TO REDO'); return; }
+  restore(history[++histIndex]);
+  saveStateSoon();
+  log('REDO');
+}
+
+// slider changes redraw the preview once per frame; the (slow) CSG waits until the slider is released
+let dirtyQueued = false, holding = false;
+function markDirtySoon() {
+  if (dirtyQueued) return;
+  dirtyQueued = true;
+  requestAnimationFrame(() => { dirtyQueued = false; markDirty(); });
+}
+addEventListener('pointerdown', e => { if (e.target.matches?.('input[type=range]')) holding = true; }, true);
+addEventListener('pointerup', () => { if (holding) { holding = false; scheduleBuild(); } }, true);
+
+function scheduleBuild() {
+  clearTimeout(buildTimer);
+  if (P.autoBuild && !dragging && !holding && ready()) buildTimer = setTimeout(() => buildAsync(), 400);
+}
+
+/* ---------- CSG off the main thread ----------
+   Import maps don't reach workers, so the worker pulls esm.sh builds whose
+   dependencies are already resolved to URLs. 'model' is cached in the worker;
+   other operands travel with each job. */
+const WORKER_SRC = `
+import { BufferGeometry, BufferAttribute } from 'https://esm.sh/three@0.160.0';
+import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'https://esm.sh/three-bvh-csg@0.0.16?deps=three@0.160.0,three-mesh-bvh@0.7.6';
+const OPS = { add: ADDITION, sub: SUBTRACTION, int: INTERSECTION };
+const ev = new Evaluator();
+ev.attributes = ['position'];
+ev.useGroups = false;
+const cache = new Map();
+const brushFrom = d => {
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(d.pos, 3));
+  if (d.idx) g.setIndex(new BufferAttribute(d.idx, 1));
+  const b = new Brush(g);
+  b.updateMatrixWorld();
+  return b;
+};
+self.onmessage = ({ data }) => {
+  if (data.type === 'set') { cache.set(data.key, brushFrom(data)); return; }
+  try {
+    const local = {};
+    for (const [k, d] of Object.entries(data.inputs)) local[k] = brushFrom(d);
+    const get = k => local[k] || cache.get(k);
+    const results = data.steps.map(s => ev.evaluate(get(s.a), get(s.b), OPS[s.op]).geometry.attributes.position.array);
+    postMessage({ id: data.id, results }, [...new Set(results.map(r => r.buffer))]);
+  } catch (e) {
+    postMessage({ id: data.id, error: String(e && e.message || e) });
+  }
+};
+postMessage({ ready: true });
+`;
+let csgWorker = null, workerBroken = false, workerModel = null, csgSeq = 0, workerOK = false;
+const csgPending = new Map();
+const OPS_MAIN = { add: ADDITION, sub: SUBTRACTION, int: INTERSECTION };
+// file:// pages often may not start blob: workers, so a data: URL is the second try
+const WORKER_URLS = [
+  () => URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })),
+  () => 'data:text/javascript;charset=utf-8,' + encodeURIComponent(WORKER_SRC),
+];
+let workerUrlIdx = 0;
+
+function giveUpWorker(why) {
+  workerBroken = true;
+  csgWorker?.terminate();
+  csgWorker = null;
+  console.warn('CSG worker:', why);
+  log('CSG WORKER UNAVAILABLE - CSG RUNS ON THE MAIN THREAD (VIEWPORT FREEZES WHILE COMPUTING)', 'err');
+  // re-run whatever was waiting, on the main thread
+  for (const p of csgPending.values()) p.retry();
+  csgPending.clear();
+}
+
+function spawnWorker() {
+  while (workerUrlIdx < WORKER_URLS.length) {
+    try {
+      csgWorker = new Worker(WORKER_URLS[workerUrlIdx](), { type: 'module' });
+      break;
+    } catch (e) {
+      workerUrlIdx++;
+      if (workerUrlIdx >= WORKER_URLS.length) return giveUpWorker(e);
+    }
+  }
+  workerModel = null;
+  csgWorker.onmessage = ({ data }) => {
+    if (data.ready) {
+      if (!workerOK) log('CSG WORKER ONLINE');
+      workerOK = true;
+      return;
+    }
+    const p = csgPending.get(data.id);
+    if (!p) return;
+    csgPending.delete(data.id);
+    data.error ? p.reject(new Error(data.error)) : p.resolve(data.results);
+  };
+  csgWorker.onerror = e => {
+    e.preventDefault?.();
+    csgWorker.terminate();
+    csgWorker = null;
+    // failed before it ever answered: try the next URL kind, resending queued jobs
+    if (!workerOK && ++workerUrlIdx < WORKER_URLS.length) {
+      spawnWorker();
+      if (!csgWorker) return;
+      for (const p of csgPending.values()) p.send();
+      return;
+    }
+    giveUpWorker(e.message || 'load error');
+  };
+}
+
+// start the worker and hand it the model early, so the first build doesn't wait
+function warmWorker() {
+  if (workerBroken || !model) return;
+  if (!csgWorker) spawnWorker();
+  if (csgWorker) sendModel();
+}
+function sendModel() {
+  if (workerModel === model.geom) return;
+  const d = geomMsg(model.geom);
+  csgWorker.postMessage({ type: 'set', key: 'model', ...d }, transfers(d));
+  workerModel = model.geom;
+}
+
+const geomMsg = g => ({ pos: g.attributes.position.array.slice(), idx: g.index ? g.index.array.slice() : null });
+const transfers = d => d.idx ? [d.pos.buffer, d.idx.buffer] : [d.pos.buffer];
+const posGeom = arr => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+};
+
+function csgMain(inputs, steps) {
+  const brushes = { model: model.brush };
+  for (const [k, g] of Object.entries(inputs)) { brushes[k] = new Brush(g); brushes[k].updateMatrixWorld(); }
+  return steps.map(s => evaluator.evaluate(brushes[s.a], brushes[s.b], OPS_MAIN[s.op]).geometry);
+}
+
+// inputs: { name: BufferGeometry }, steps: [{ a, b, op }] where 'model' is the working model
+function runCSG(inputs, steps) {
+  $('#busy').hidden = false;
+  const done = () => { if (!csgPending.size) $('#busy').hidden = true; };
+  const viaMain = () => new Promise((res, rej) => setTimeout(() => {
+    try { res(csgMain(inputs, steps)); } catch (e) { rej(e); }
+  }, 30));
+  if (!workerBroken && !csgWorker) spawnWorker();
+  if (workerBroken) { lastCSGPath = 'MAIN THREAD'; return viaMain().finally(done); }
+  lastCSGPath = 'WORKER';
+  const id = ++csgSeq;
+  // buffers are transferred, so a resend (after a respawn) rebuilds the message
+  const send = () => {
+    sendModel();
+    const msg = {}, tr = [];
+    for (const [k, g] of Object.entries(inputs)) { msg[k] = geomMsg(g); tr.push(...transfers(msg[k])); }
+    csgWorker.postMessage({ type: 'eval', id, inputs: msg, steps }, tr);
+  };
+  return new Promise((resolve, reject) => {
+    csgPending.set(id, {
+      resolve: arrs => resolve(arrs.map(posGeom)),
+      reject,
+      send,
+      retry: () => { lastCSGPath = 'MAIN THREAD'; viaMain().then(resolve, reject); },
+    });
+    send();
+  }).finally(done);
+}
+let lastCSGPath = '';
+
+// a newer request makes the running job pointless: kill the worker (it respawns on demand)
+function cancelCSG() {
+  if (!csgWorker || !csgPending.size) return;
+  csgWorker.terminate();
+  csgWorker = null;
+  for (const p of csgPending.values()) p.reject(new Error('CANCELLED'));
+  csgPending.clear();
+  $('#busy').hidden = true;
+}
+
+let buildSeq = 0;
+function buildAsync() { return build(); }
+
+async function build() {
+  clearTimeout(buildTimer);
+  if (!ready()) { log('NEED A MODEL AND AN IMAGE FIRST', 'err'); return false; }
+  const seq = ++buildSeq;
+  cancelCSG();
+  const t0 = performance.now();
+  const mode = P.mode;
+  try {
+    clearResult();
+    const [ht, hb] = buildHeights();
+    const brushGeom = brushGeometry(ht, hb);
+    const steps = mode === 'relief' ? [{ a: 'brush', b: 'model', op: 'sub' }]
+      : mode === 'cutout' ? [{ a: 'model', b: 'brush', op: 'sub' }]
+      : [{ a: 'model', b: 'brush', op: 'sub' }, { a: 'model', b: 'brush', op: 'int' }];
+    const out = await runCSG({ brush: brushGeom }, steps);
+    if (seq !== buildSeq) { out.forEach(g => g.dispose()); return false; }
+    let base, stamp = null;
+    if (mode === 'relief') { base = model.geom; stamp = out[0]; }
+    else if (mode === 'cutout') base = out[0];
+    else [base, stamp] = out;
+    result = { base, stamp, brushGeom, mode };
+    baseMesh.geometry = base;
+    stampMesh.geometry = stamp || new THREE.BufferGeometry();
+    modelMesh.visible = artMesh.visible = false;
+    resultGroup.visible = true;
+    const tri = g => g ? (g.index ? g.index.count : g.attributes.position.count) / 3 : 0;
+    const ms = Math.round(performance.now() - t0);
+    $('#buildInfo').textContent = `BUILT IN ${ms} MS\nBODY ${tri(base).toLocaleString()} TRIS` + (stamp ? `\nSTAMP ${tri(stamp).toLocaleString()} TRIS` : '');
+    log(`BUILD OK: ${mode.toUpperCase()} IN ${ms} MS (${lastCSGPath})`);
+    return true;
+  } catch (e) {
+    if (e.message === 'CANCELLED' || seq !== buildSeq) return false;
+    console.error(e);
+    log('CSG ERROR: ' + e.message, 'err');
+    $('#buildInfo').textContent = 'BUILD FAILED';
+    showPreview();
+    return false;
+  }
+}
+
+/* ============================================================
+   PLACEMENT / INTERACTION
+   ============================================================ */
+const ndc = new V2(), pick = new THREE.Raycaster();
+function setRay(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  pick.setFromCamera(ndc, camera);
+}
+
+// averages a few nearby face normals so faceted surfaces give a steady orientation
+function surfaceNormal(hit, dir) {
+  const n = hit.face.normal.clone().transformDirection(modelMesh.matrixWorld);
+  if (n.dot(dir) > 0) n.negate();
+  const t1 = new V3().crossVectors(n, Math.abs(n.z) < 0.9 ? new V3(0, 0, 1) : new V3(1, 0, 0)).normalize();
+  const t2 = new V3().crossVectors(n, t1);
+  const r = Math.max(P.size * 0.08, 0.3);
+  const acc = n.clone();
+  for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    _o.copy(hit.point).addScaledVector(n, r).addScaledVector(t1, a * r).addScaledVector(t2, b * r);
+    rc.set(_o, _d.copy(n).negate());
+    rc.far = r * 4;
+    const h = rc.intersectObject(modelMesh, false)[0];
+    if (!h) continue;
+    const nn = h.face.normal.clone();
+    if (nn.dot(n) < 0) nn.negate();
+    if (nn.dot(n) > 0.5) acc.add(nn);
+  }
+  return acc.normalize();
+}
+
+function placeAtHit(hit, dir, jump) {
+  const first = !place.p;
+  place.p = hit.point.clone();
+  if (P.follow || first) {
+    const n = surfaceNormal(hit, dir);
+    place.ref = jump ? upRef(n) : transportRef(n);
+    place.n = n;
+  }
+}
+
+function placeDefault(resetSize) {
+  if (!model || !art) return;
+  if (resetSize) {
+    P.size = Math.max(5, Math.round(Math.min(model.size.x, model.size.y) * 0.5));
+    ui.size.set(P.size);
+  }
+  rc.set(new V3(0, 0, model.size.z + 10), new V3(0, 0, -1));
+  rc.far = Infinity;
+  const hit = rc.intersectObject(modelMesh, false)[0];
+  if (hit) placeAtHit(hit, rc.ray.direction.clone(), true);
+  else { place.p = new V3(0, 0, model.size.z); place.n.set(0, 0, 1); place.ref = upRef(place.n); }
+}
+
+// left button: press ON the stamp and drag to move it (keeps the grab point under the cursor);
+// a plain click does nothing, a double-click on the model drops the stamp there
+let moveQueued = null, grabOffset = null, moved = false;
+const screenOf = v => {
+  const r = renderer.domElement.getBoundingClientRect();
+  const s = v.clone().project(camera);
+  return { x: r.left + (s.x + 1) / 2 * r.width, y: r.top + (1 - s.y) / 2 * r.height };
+};
+vp.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !ready()) return;
+  setRay(e);
+  if (!pick.intersectObject(artMesh, false).length) return;
+  const c = screenOf(place.p);
+  grabOffset = { x: e.clientX - c.x, y: e.clientY - c.y };
+  moved = false;
+  dragging = true;
+  vp.classList.add('drag');
+  vp.setPointerCapture(e.pointerId);
+  clearTimeout(buildTimer);
+}, { capture: true });
+
+vp.addEventListener('pointermove', e => {
+  if (!moveQueued) requestAnimationFrame(() => {
+    const ev = moveQueued;
+    moveQueued = null;
+    if (!ev || !model) return;
+    if (dragging) {
+      setRay({ clientX: ev.clientX - grabOffset.x, clientY: ev.clientY - grabOffset.y });
+      const hit = pick.intersectObject(modelMesh, false)[0];
+      if (!hit) return;
+      if (!moved) { moved = true; if (result) clearResult(); }
+      if (ev.shiftKey) dragLocked(hit.point);
+      else { axisLock = null; placeAtHit(hit, pick.ray.direction, false); }
+      updatePreview();
+    } else if (ready() && !ev.buttons) {
+      setRay(ev);
+      vp.classList.toggle('over', pick.intersectObject(artMesh, false).length > 0);
+    }
+  });
+  moveQueued = e;
+});
+
+// Shift while dragging: the first clear direction of travel (face horizontal or vertical) wins
+// until Shift is released; the normal stays fixed meanwhile
+let axisLock = null;
+function dragLocked(target) {
+  if (!axisLock) {
+    const N = place.n.clone(), V = place.ref.clone();
+    axisLock = { origin: place.p.clone(), N, H: new V3().crossVectors(V, N), V, axis: null };
+  }
+  const L = axisLock;
+  const d = target.clone().sub(L.origin);
+  const dh = d.dot(L.H), dv = d.dot(L.V);
+  if (!L.axis) {
+    if (Math.max(Math.abs(dh), Math.abs(dv)) < Math.max(0.5, P.size * 0.03)) return; // not decided yet
+    L.axis = Math.abs(dh) >= Math.abs(dv) ? 'H' : 'V';
+    log('MOVE LOCKED ' + (L.axis === 'H' ? 'HORIZONTALLY' : 'VERTICALLY'));
+  }
+  const W = L.origin.clone().addScaledVector(L[L.axis], L.axis === 'H' ? dh : dv);
+  projectToSurface(W, L.N, Math.max(P.size, 5), place.p);
+}
+
+vp.addEventListener('pointerup', () => {
+  axisLock = null;
+  if (!dragging) return;
+  dragging = false;
+  vp.classList.remove('drag');
+  if (moved) markDirty();
+});
+
+vp.addEventListener('dblclick', e => {
+  if (!model || !art) return;
+  setRay(e);
+  const hit = pick.intersectObject(modelMesh, false)[0];
+  if (hit) { placeAtHit(hit, pick.ray.direction, true); markDirty(); }
+});
+
+// center the stamp on the face it sits on: the face = triangles facing the same way, near its plane
+function centerOnFace(alongH, alongV) {
+  if (!ready()) return;
+  const N = place.n, V = place.ref, H = new V3().crossVectors(V, N);
+  const P0 = place.p;
+  const pos = model.geom.attributes.position, idx = model.geom.index;
+  const tol = Math.max(1, model.diag * 0.03);
+  const a = new V3(), b = new V3(), c = new V3(), n = new V3(), e1 = new V3(), d = new V3();
+  const ext = { h0: Infinity, h1: -Infinity, v0: Infinity, v1: -Infinity };
+  const scan = minDot => {
+    let found = false;
+    for (let i = 0; i < idx.count; i += 3) {
+      a.fromBufferAttribute(pos, idx.getX(i));
+      b.fromBufferAttribute(pos, idx.getX(i + 1));
+      c.fromBufferAttribute(pos, idx.getX(i + 2));
+      n.subVectors(b, a).cross(e1.subVectors(c, a));
+      if (n.lengthSq() === 0) continue;
+      n.normalize();
+      if (Math.abs(n.dot(N)) < minDot) continue;
+      if (Math.abs(d.addVectors(a, b).add(c).divideScalar(3).sub(P0).dot(N)) > tol) continue;
+      found = true;
+      for (const v of [a, b, c]) {
+        d.subVectors(v, P0);
+        const h = d.dot(H), w = d.dot(V);
+        ext.h0 = Math.min(ext.h0, h); ext.h1 = Math.max(ext.h1, h);
+        ext.v0 = Math.min(ext.v0, w); ext.v1 = Math.max(ext.v1, w);
+      }
+    }
+    return found;
+  };
+  if (!scan(0.95) && !scan(0.8)) { log('COULD NOT FIND A FLAT FACE HERE', 'err'); return; }
+  const W = P0.clone();
+  if (alongH) W.addScaledVector(H, (ext.h0 + ext.h1) / 2);
+  if (alongV) W.addScaledVector(V, (ext.v0 + ext.v1) / 2);
+  projectToSurface(W, N, Math.max(P.size, 5), place.p);
+  log(`CENTERED ${alongH && alongV ? 'ON FACE' : alongH ? 'HORIZONTALLY' : 'VERTICALLY'}`);
+  markDirty();
+}
+
+// shoot a ray along `dir` (from outside, toward the model) through the current spot,
+// so the stamp keeps its position in that projection but lands on the facing surface
+function placeFrom(dir) {
+  if (!ready()) return;
+  const center = model.geom.boundingBox.getCenter(new V3());
+  const shoot = through => {
+    rc.set(through.clone().addScaledVector(dir, -model.diag * 2), dir);
+    rc.far = Infinity;
+    return rc.intersectObject(modelMesh, false)[0];
+  };
+  const hit = shoot(place.p) || shoot(center);
+  if (!hit) { log('NO SURFACE ON THAT SIDE', 'err'); return; }
+  const keepFollow = P.follow;
+  P.follow = true; // a face jump always takes the new surface's normal
+  placeAtHit(hit, dir, true);
+  P.follow = keepFollow;
+  viewFace(place.n);
+  markDirty();
+}
+
+// smoothly orbit the camera to look straight at a face
+let camTween = null;
+function viewFace(n) {
+  const target = model.geom.boundingBox.getCenter(new V3());
+  const dist = camera.position.distanceTo(controls.target);
+  const dirV = n.clone();
+  if (Math.abs(n.z) > 0.9) dirV.add(new V3(0, -0.35, 0)); // never exactly along camera.up
+  dirV.normalize();
+  camTween = {
+    t0: performance.now(),
+    fromPos: camera.position.clone(), toPos: target.clone().addScaledVector(dirV, dist),
+    fromTgt: controls.target.clone(), toTgt: target,
+  };
+}
+function stepCamTween() {
+  if (!camTween) return;
+  const k = Math.min(1, (performance.now() - camTween.t0) / 450), e = k * k * (3 - 2 * k);
+  camera.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+  controls.target.lerpVectors(camTween.fromTgt, camTween.toTgt, e);
+  if (k >= 1) camTween = null;
+}
+
+function nudge(dx, dy) {
+  if (!ready()) return;
+  const { O, N, U, V } = frame();
+  const W = O.clone().addScaledVector(U, dx).addScaledVector(V, dy);
+  projectToSurface(W, N, Math.max(P.size, 5), place.p);
+  markDirty();
+}
+
+/* ============================================================
+   UI BINDING
+   ============================================================ */
+const ui = {};
+function onParam(k) {
+  if (TRACE_KEYS.has(k)) return retraceSoon();
+  if (k === 'colModel') { matModel.color.set(P.colModel); return; }
+  if (k === 'colArt') { matArt.color.set(P.colArt); matGhost.color.set(P.colArt); return; }
+  if (k === 'autoBuild') { if (P.autoBuild && !result) scheduleBuild(); return; }
+  noteChange();
+  if (k === 'mode') syncModeGroups();
+  if (k === 'mirror') drawPreview();
+  markDirtySoon();
+}
+
+function syncModeGroups() {
+  $$('[data-show]').forEach(el => el.hidden = el.dataset.show !== P.mode);
+}
+
+function initControls() {
+  for (const el of $$('.sl')) {
+    const k = el.dataset.k, step = +el.dataset.step;
+    const dec = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+    el.innerHTML = `<label><span>${el.dataset.label}</span><input type="number" step="${step}"><em>${el.dataset.unit || ''}</em></label>
+      <input type="range" min="${el.dataset.min}" max="${el.dataset.max}" step="${step}">`;
+    const n = el.querySelector('input[type=number]'), r = el.querySelector('input[type=range]');
+    const set = v => { r.value = v; n.value = (+v).toFixed(dec); };
+    r.addEventListener('input', () => { P[k] = +r.value; n.value = P[k].toFixed(dec); onParam(k); });
+    n.addEventListener('change', () => {
+      let v = +n.value;
+      if (!isFinite(v)) v = P[k];
+      v = Math.max(+el.dataset.min, v);
+      P[k] = v; set(v); onParam(k);
+    });
+    set(P[k]);
+    ui[k] = { set, range: r };
+  }
+  for (const el of $$('.ck')) {
+    const k = el.dataset.k;
+    el.tabIndex = 0;
+    el.setAttribute('role', 'checkbox');
+    el.innerHTML = `<span class="box"></span><span>${el.dataset.label}</span>`;
+    const box = el.firstChild;
+    const set = v => { box.textContent = v ? '[X]' : '[ ]'; el.setAttribute('aria-checked', v); };
+    const toggle = () => { P[k] = !P[k]; set(P[k]); onParam(k); };
+    el.addEventListener('click', toggle);
+    el.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
+    set(P[k]);
+    ui[k] = { set };
+  }
+  for (const el of $$('.rd')) {
+    const k = el.dataset.k;
+    const opts = el.dataset.opts.split(',').map(s => s.split(':'));
+    el.innerHTML = opts.map(([v]) => `<button type="button" class="opt" data-v="${v}"></button>`).join('');
+    const set = v => el.querySelectorAll('.opt').forEach((b, i) => {
+      b.textContent = (b.dataset.v === v ? '(*) ' : '( ) ') + opts[i][1];
+      b.classList.toggle('on', b.dataset.v === v);
+    });
+    el.addEventListener('click', e => {
+      const b = e.target.closest('.opt');
+      if (!b || P[k] === b.dataset.v) return;
+      P[k] = b.dataset.v; set(P[k]); onParam(k);
+    });
+    set(P[k]);
+    ui[k] = { set };
+  }
+  for (const el of $$('.color')) {
+    const k = el.dataset.k;
+    el.innerHTML = `<div class="top"><span>${el.dataset.label}</span><code></code><input type="color"></div>
+      <div class="swatches">${SWATCHES.map(c => `<button type="button" style="background:${c}" data-c="${c}" title="${c}"></button>`).join('')}</div>`;
+    const inp = el.querySelector('input'), code = el.querySelector('code');
+    const set = v => { inp.value = v; code.textContent = v.toUpperCase(); };
+    inp.addEventListener('input', () => { P[k] = inp.value; set(P[k]); onParam(k); });
+    el.querySelector('.swatches').addEventListener('click', e => {
+      const c = e.target.dataset.c;
+      if (c) { P[k] = c; set(c); onParam(k); }
+    });
+    set(P[k]);
+    ui[k] = { set };
+  }
+  syncModeGroups();
+}
+
+/* ============================================================
+   FILES
+   ============================================================ */
+const isModelFile = f => /\.(stl|3mf)$/i.test(f.name);
+function handleFiles(list) {
+  list = [...list];
+  const models = list.filter(isModelFile);
+  if (models.length) loadModelFiles(models);
+  list.filter(f => !isModelFile(f)).forEach(handleFile);
+}
+
+async function handleFile(file) {
+  const name = file.name;
+  if (/\.svg$/i.test(name) || file.type === 'image/svg+xml') {
+    const text = await file.text();
+    setArtSource({ kind: 'svg', name, text });
+    persist('image', { kind: 'svg', name, text });
+  } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name)) {
+    try {
+      setArtSource({ kind: 'raster', name, img: await createImageBitmap(file) });
+      persist('image', { kind: 'raster', name, type: file.type, bytes: await file.arrayBuffer() });
+    }
+    catch (e) { log(`${name}: IMAGE DECODE FAILED`, 'err'); }
+  } else log('UNKNOWN FILE TYPE: ' + name, 'err');
+}
+
+function setArtSource(src) {
+  artSrc = src;
+  art = null;
+  const dims = src.img ? ` ${src.img.width}x${src.img.height}PX` : '';
+  $('#imgInfo').textContent = `${src.name}${dims}\n${src.kind === 'svg' ? 'SVG' : 'BITMAP'}`;
+  log('LOADED ' + src.name);
+  retrace();
+}
+
+$('#fStl').addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; });
+$('#fImg').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault();
+  handleFiles(e.dataTransfer.files);
+});
+
+const DEMO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path fill="#000" fill-rule="evenodd" d="M50 3a47 47 0 1 0 0.001 0zM50 12a38 38 0 1 1 -0.001 0z"/>
+  <path fill="#000" d="M57 16 L28 57 H47 L40 86 L72 40 H53 Z"/></svg>`;
+function loadDemo() {
+  const g = new THREE.CylinderGeometry(35, 35, 8, 128, 1);
+  g.rotateX(Math.PI / 2);
+  setParts([{ name: 'DEMO_PUCK.STL', geom: cleanGeom(g), on: true }], 'DEMO_PUCK.STL');
+  if (restoringSession) return;
+  setArtSource({ kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
+  persist('models', { demo: true });
+  persist('image', { kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
+}
+
+/* ============================================================
+   SESSION (survives a page refresh; lives in this browser's IndexedDB)
+   ============================================================ */
+const idb = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('stl-stamper', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('kv', mode);
+      const req = fn(t.objectStore('kv'));
+      t.oncomplete = () => res(req?.result);
+      t.onerror = () => rej(t.error);
+    });
+  };
+  return {
+    get: k => run('readonly', s => s.get(k)),
+    set: (k, v) => run('readwrite', s => s.put(v, k)),
+    clear: () => run('readwrite', s => s.clear()),
+  };
+})();
+let restoringSession = false, saveTimer = 0, storageWarned = false;
+
+function persist(key, value) {
+  idb.set(key, value).catch(e => {
+    if (!storageWarned) log('COULD NOT SAVE SESSION: ' + e.message, 'err');
+    storageWarned = true;
+  });
+}
+
+function saveStateSoon() {
+  if (restoringSession) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => persist('state', {
+    P: { ...P },
+    place: place.p ? { p: place.p.toArray(), n: place.n.toArray(), ref: place.ref.toArray() } : null,
+    parts: parts.map(p => ({ o: p.orig, on: p.on })),
+    cam: { pos: camera.position.toArray(), tgt: controls.target.toArray() },
+  }), 400);
+}
+controls.addEventListener('end', saveStateSoon);
+
+async function restoreSession() {
+  let models, image, st;
+  try { [models, image, st] = await Promise.all(['models', 'image', 'state'].map(k => idb.get(k))); }
+  catch { return; }
+  if (!models && !image) return;
+  restoringSession = true;
+  try {
+    if (models?.demo) loadDemo();
+    else if (models?.files?.length) await loadModelFiles(models.files.map(f => new File([f.bytes], f.name)));
+
+    if (st) {
+      if (st.parts && partRegistry.size) {
+        const byOrig = new Map([...partRegistry.values()].map(p => [p.orig, p]));
+        parts = st.parts.map(s => { const p = byOrig.get(s.o); if (p) p.on = s.on; return p; }).filter(Boolean);
+        removedSrcs = [...partRegistry.values()].filter(p => !parts.includes(p) && p.src).map(p => p.src);
+        renderParts();
+        rebuildModel(false);
+      }
+      for (const k of Object.keys(st.P || {})) if (k in P) P[k] = st.P[k];
+      for (const k of Object.keys(P)) ui[k]?.set(P[k]);
+      syncModeGroups();
+      matModel.color.set(P.colModel);
+      matArt.color.set(P.colArt);
+      matGhost.color.set(P.colArt);
+      if (st.place && model) {
+        place.p = new V3().fromArray(st.place.p);
+        place.n = new V3().fromArray(st.place.n);
+        place.ref = new V3().fromArray(st.place.ref);
+      }
+      if (st.cam && model) {
+        camera.position.fromArray(st.cam.pos);
+        controls.target.fromArray(st.cam.tgt);
+        controls.update();
+      }
+    }
+    if (image?.kind === 'svg') setArtSource({ kind: 'svg', name: image.name, text: image.text });
+    else if (image?.kind === 'raster') setArtSource({ kind: 'raster', name: image.name, img: await createImageBitmap(new Blob([image.bytes], { type: image.type })) });
+    else markDirty();
+    log('SESSION RESTORED');
+  } catch (e) {
+    console.error(e);
+    log('COULD NOT RESTORE SESSION: ' + e.message, 'err');
+  } finally {
+    restoringSession = false;
+  }
+}
+
+async function clearSession() {
+  try { await idb.clear(); } catch { /* nothing stored */ }
+  location.reload();
+}
+
+/* ============================================================
+   EXPORT
+   ============================================================ */
+function download(blob, fname) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  log('SAVED ' + fname);
+}
+const baseName = () => (modelName || 'model').replace(/\.(stl|3mf)$/i, '');
+
+async function ensureBuilt() {
+  if (result && result.mode === P.mode) return true;
+  return buildAsync();
+}
+
+function stlBlob(geom) {
+  const data = new STLExporter().parse(new THREE.Mesh(geom), { binary: true });
+  return new Blob([data], { type: 'model/stl' });
+}
+
+async function exportSTL(which) {
+  if (!(await ensureBuilt())) return;
+  const r = result;
+  let g;
+  if (which === 'base') g = r.base;
+  else if (which === 'stamp') {
+    if (!r.stamp) { log('CUTOUT MODE HAS NO STAMP BODY', 'err'); return; }
+    g = r.stamp;
+  } else if (r.mode === 'relief') {
+    [g] = await runCSG({ brush: r.brushGeom }, [{ a: 'model', b: 'brush', op: 'add' }]);
+  } else if (r.stamp) {
+    g = mergeGeometries([r.base, r.stamp].map(x => x.index ? x.toNonIndexed() : x));
+  } else g = r.base;
+  const suffix = which === 'base' ? '_body' : which === 'stamp' ? '_stamp' : '_stamped';
+  download(stlBlob(g), baseName() + suffix + '.stl');
+}
+
+// several geometries into one <mesh>; counts = triangles written per geometry (Prusa volume ranges)
+function meshXMLParts(geoms) {
+  const v = [], t = [], counts = [];
+  let off = 0;
+  for (const geom of geoms) {
+    const g = geom.index ? geom : mergeVertices(geom, 1e-5);
+    const pos = g.attributes.position, idx = g.index;
+    for (let i = 0; i < pos.count; i++) {
+      v.push(`<vertex x="${pos.getX(i).toFixed(4)}" y="${pos.getY(i).toFixed(4)}" z="${pos.getZ(i).toFixed(4)}"/>`);
+    }
+    let c = 0;
+    for (let i = 0; i < idx.count; i += 3) {
+      const a = idx.getX(i), b = idx.getX(i + 1), d = idx.getX(i + 2);
+      if (a === b || b === d || a === d) continue;
+      t.push(`<triangle v1="${a + off}" v2="${b + off}" v3="${d + off}"/>`);
+      c++;
+    }
+    counts.push(c);
+    off += pos.count;
+  }
+  return { xml: `<mesh><vertices>${v.join('')}</vertices><triangles>${t.join('')}</triangles></mesh>`, counts };
+}
+const meshXML = geom => meshXMLParts([geom]).xml;
+
+const IDENTITY16 = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1';
+const PROD_NS = 'http://schemas.microsoft.com/3dmanufacturing/production/2015/06';
+
+function export3MF() {
+  return src3mf ? exportPatched3MF() : exportNew3MF();
+}
+
+async function exportNew3MF() {
+  if (!(await ensureBuilt())) return;
+  const parts = [{ name: 'body', g: result.base, color: P.colModel }];
+  if (result.stamp) parts.push({ name: 'stamp', g: result.stamp, color: P.colArt });
+  const col = c => c.toUpperCase() + 'FF';
+  const mats = parts.map(p => `<base name="${p.name}" displaycolor="${col(p.color)}"/>`).join('');
+  const objs = parts.map((p, i) => `<object id="${i + 2}" name="${p.name}" type="model" pid="1" pindex="${i}">${meshXML(p.g)}</object>`).join('');
+  const parentId = parts.length + 2;
+  const comps = parts.map((_, i) => `<component objectid="${i + 2}"/>`).join('');
+  const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<metadata name="Application">STL-Stamper</metadata>
+<resources><basematerials id="1">${mats}</basematerials>${objs}
+<object id="${parentId}" name="${baseName()}" type="model"><components>${comps}</components></object></resources>
+<build><item objectid="${parentId}"/></build>
+</model>`;
+  const types = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
+  // Bambu / Orca read per-part filament assignment from this file
+  const settings = `<?xml version="1.0" encoding="UTF-8"?>
+<config><object id="${parentId}"><metadata key="name" value="${baseName()}"/><metadata key="extruder" value="1"/>${
+    parts.map((p, i) => `<part id="${i + 2}" subtype="normal_part"><metadata key="name" value="${p.name}"/><metadata key="matrix" value="${IDENTITY16}"/><metadata key="extruder" value="${i + 1}"/></part>`).join('')
+  }</object></config>`;
+  const zip = zipSync({
+    '[Content_Types].xml': strToU8(types),
+    '_rels/.rels': strToU8(rels),
+    '3D/3dmodel.model': strToU8(modelXml),
+    'Metadata/model_settings.config': strToU8(settings),
+  }, { level: 6 });
+  download(new Blob([zip], { type: 'model/3mf' }), baseName() + '_stamped.3mf');
+}
+
+/* ---------- patch the original 3MF: keep everything, touch only what the stamp needs ---------- */
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const colorDist = (a, b) => { const x = hexRGB(a), y = hexRGB(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+
+// slots per-filament arrays of a Bambu/Orca project grow by one, copying the last filament
+const PER_FILAMENT = /^(filament_|default_filament_colour|nozzle_temperature|hot_plate_temp|cool_plate_temp|eng_plate_temp|textured_plate_temp|textured_cool_plate_temp|supertack_plate_temp|chamber_temperatures?$|close_fan_the_first_x_layers|fan_cooling_layer_time|fan_max_speed|fan_min_speed|overhang_fan|full_fan_speed_layer|slow_down_|reduce_fan_stop_start_freq|additional_cooling_fan_speed|during_print_exhaust_fan_speed|complete_print_exhaust_fan_speed|activate_air_filtration|activate_chamber_temp_control|required_nozzle_HRC|temperature_vitrification|enable_pressure_advance|pressure_advance)/;
+function addFilament(ps, hex) {
+  const n = ps.filament_colour.length;
+  for (const [k, v] of Object.entries(ps)) {
+    if (!Array.isArray(v)) continue;
+    if (k === 'flush_volumes_matrix' && v.length === n * n) {
+      const m = [];
+      for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) m.push(i < n && j < n ? v[i * n + j] : i === j ? '0' : '280');
+      ps[k] = m;
+    } else if (k === 'flush_volumes_vector' && v.length === n * 2) {
+      v.push(v[v.length - 2], v[v.length - 1]);
+    } else if ((k === 'different_settings_to_system' || k === 'inherits_group') && v.length === n + 2) {
+      v.splice(n + 1, 0, v[n]);
+    } else if (v.length === n && PER_FILAMENT.test(k)) {
+      v.push(v[n - 1]);
+    }
+  }
+  ps.filament_colour[n] = hex.toUpperCase();
+  return n + 1;
+}
+
+async function exportPatched3MF() {
+  if (!(await ensureBuilt())) return;
+  const S = src3mf, r = result;
+  const files = { ...S.files };
+  const dec = new TextDecoder();
+  const doms = {};
+  const dom = p => {
+    const k = zipKey(files, p);
+    if (!k) return null;
+    return doms[k] || (doms[k] = xmlDoc(dec.decode(files[k])));
+  };
+  const byId = (d, tag, id) => [...d.getElementsByTagName(tag)].find(e => e.getAttribute('id') === String(id));
+  const rootD = dom(S.root);
+  const bambu = dom('Metadata/model_settings.config');
+  const prusa = dom('Metadata/Slic3r_PE_model.config');
+  const notes = [];
+
+  // which selected parts does the stamp touch, and which one carries the stamp body?
+  const box = r.brushGeom.boundingBox;
+  const inModel = p => p.geom.clone().translate(modelOffset.x, modelOffset.y, modelOffset.z);
+  const touched = parts.filter(p => {
+    if (!p.on || !p.src) return false;
+    p.geom.computeBoundingBox();
+    return p.geom.boundingBox.clone().translate(modelOffset).intersectsBox(box);
+  });
+  if (!touched.length && removedSrcs.length === 0) { log('THE STAMP DOES NOT TOUCH ANY SELECTED PART', 'err'); return; }
+  let target = touched[0], bestD = Infinity;
+  for (const p of touched) {
+    rc.set(place.p.clone().addScaledVector(place.n, 2), place.n.clone().negate());
+    rc.far = 20;
+    const h = rc.intersectObject(new THREE.Mesh(inModel(p), matModel), false)[0];
+    if (h && h.distance < bestD) { bestD = h.distance; target = p; }
+  }
+  const toLocal = (g, full) => g.clone().translate(-modelOffset.x, -modelOffset.y, -modelOffset.z).applyMatrix4(full.clone().invert());
+
+  const edits = new Map();
+  if (r.mode !== 'relief' && touched.length) {
+    const inputs = { brush: r.brushGeom };
+    touched.forEach((p, i) => { inputs['part' + i] = mergeVertices(inModel(p), 1e-4); });
+    const cut = await runCSG(inputs, touched.map((_, i) => ({ a: 'part' + i, b: 'brush', op: 'sub' })));
+    touched.forEach((p, i) => edits.set(p, cut[i]));
+  }
+  const shared = new Set();
+  for (const p of edits.keys()) if (parts.filter(q => q.src && q.src.path === p.src.path && q.src.objId === p.src.objId && q.src.vol === p.src.vol).length > 1) shared.add(p.name);
+  if (shared.size) notes.push('MESH SHARED BY SEVERAL INSTANCES: ALL OF THEM CHANGE');
+
+  const setMesh = (objEl, xml) => {
+    const node = xmlDoc(`<r xmlns="${objEl.namespaceURI}">${xml}</r>`).documentElement.firstChild;
+    const old = kids(objEl, 'mesh')[0];
+    const imported = objEl.ownerDocument.importNode(node, true);
+    old ? objEl.replaceChild(imported, old) : objEl.appendChild(imported);
+  };
+  const metaEl = (d, attrs) => {
+    const m = d.createElement('metadata');
+    for (const [k, v] of Object.entries(attrs)) m.setAttribute(k, v);
+    return m;
+  };
+
+  // ---- filament for the stamp
+  let extruder = '2';
+  const stampG = touched.length ? r.stamp : null;
+  if (stampG && bambu) {
+    const psKey = zipKey(files, 'Metadata/project_settings.config');
+    const ps = psKey ? JSON.parse(dec.decode(files[psKey])) : null;
+    const bodyExt = metaVal(byId(bambu, 'object', target.src.topId) || bambu.documentElement, 'extruder') || '1';
+    if (ps?.filament_colour?.length) {
+      let best = -1, bd = Infinity;
+      ps.filament_colour.forEach((c, i) => {
+        if (String(i + 1) === bodyExt || !/^#[0-9a-f]{6}/i.test(c)) return;
+        const d = colorDist(c.slice(0, 7), P.colArt);
+        if (d < bd) { bd = d; best = i; }
+      });
+      if (best >= 0 && bd < 60) extruder = String(best + 1);
+      else {
+        extruder = String(addFilament(ps, P.colArt));
+        files[psKey] = strToU8(JSON.stringify(ps, null, 4));
+        notes.push(`ADDED FILAMENT ${extruder} (${P.colArt.toUpperCase()})`);
+      }
+    }
+  } else if (stampG && prusa) {
+    const t = files[zipKey(files, 'Metadata/Slic3r_PE.config')];
+    const m = t && /;\s*extruder_colour\s*=\s*(.*)/.exec(dec.decode(t));
+    const cols = m ? m[1].split(';').map(s => s.replace(/"/g, '').trim()) : [];
+    if (cols.length >= 2) {
+      let best = 1, bd = Infinity;
+      cols.forEach((c, i) => { if (/^#[0-9a-f]{6}$/i.test(c) && i > 0) { const d = colorDist(c, P.colArt); if (d < bd) { bd = d; best = i; } } });
+      extruder = String(best + 1);
+    } else { extruder = '1'; notes.push('PRUSA PROJECT HAS ONE EXTRUDER: SET THE STAMP EXTRUDER IN THE SLICER'); }
+  }
+
+  // ---- edited bodies (non-Prusa objects: replace the object's mesh)
+  for (const [p, g] of edits) {
+    if (p.src.kind === 'prusa') continue;
+    const o = byId(dom(p.src.path), 'object', p.src.objId);
+    if (o) setMesh(o, meshXML(toLocal(g, p.src.full)));
+  }
+
+  // ---- Prusa objects: rebuild the object mesh from its volumes and fix the triangle ranges
+  const prusaIds = new Set([...edits.keys(), ...(stampG ? [target] : [])].filter(p => p.src.kind === 'prusa').map(p => p.src.objId));
+  removedSrcs.filter(s => s.kind === 'prusa').forEach(s => prusaIds.add(s.objId));
+  for (const id of prusaIds) {
+    const vols = parts.filter(p => p.src?.kind === 'prusa' && p.src.objId === id).sort((a, b) => a.src.vol - b.src.vol);
+    const geoms = vols.map(p => edits.has(p) ? toLocal(edits.get(p), p.src.full) : p.src.local);
+    const addStamp = stampG && target.src.kind === 'prusa' && target.src.objId === id;
+    if (addStamp) geoms.push(toLocal(stampG, target.src.full));
+    const o = byId(rootD, 'object', id);
+    const cfgObj = prusa && byId(prusa, 'object', id);
+    if (!geoms.length) {
+      o?.remove();
+      [...rootD.getElementsByTagName('item')].filter(it => it.getAttribute('objectid') === id).forEach(it => it.remove());
+      cfgObj?.remove();
+      continue;
+    }
+    const { xml, counts } = meshXMLParts(geoms);
+    setMesh(o, xml);
+    if (!cfgObj) continue;
+    const volEls = kids(cfgObj, 'volume');
+    const keep = new Set(vols.map(p => p.src.vol));
+    volEls.forEach((v, k) => { if (!keep.has(k)) v.remove(); });
+    let first = 0;
+    vols.forEach((p, i) => {
+      const v = volEls[p.src.vol];
+      v.setAttribute('firstid', first);
+      v.setAttribute('lastid', first + counts[i] - 1);
+      first += counts[i];
+    });
+    if (addStamp) {
+      const v = prusa.createElement('volume');
+      v.setAttribute('firstid', first);
+      v.setAttribute('lastid', first + counts[counts.length - 1] - 1);
+      v.append(
+        metaEl(prusa, { type: 'volume', key: 'name', value: 'STAMP' }),
+        metaEl(prusa, { type: 'volume', key: 'volume_type', value: 'ModelPart' }),
+        metaEl(prusa, { type: 'volume', key: 'matrix', value: IDENTITY16 }),
+        metaEl(prusa, { type: 'volume', key: 'extruder', value: extruder }),
+      );
+      cfgObj.append(v);
+    }
+  }
+
+  // ---- stamp body as a new part of the object it sits on (Bambu / Orca / generic)
+  if (stampG && target.src.kind !== 'prusa') {
+    const ts = target.src;
+    let maxId = 0;
+    for (const k of Object.keys(files)) if (/\.model$/i.test(k)) for (const o of dom(k).getElementsByTagName('object')) maxId = Math.max(maxId, +o.getAttribute('id') || 0);
+    const newId = String(maxId + 1);
+    const top = byId(rootD, 'object', ts.topId);
+    const comps = top && kids(top, 'components')[0];
+    const stampPath = comps ? ts.path : S.root;
+    const d = dom(stampPath);
+    const unit = UNIT_MM[d.documentElement.getAttribute('unit') || 'millimeter'] || 1;
+    const local = toLocal(stampG, ts.itemM.clone().multiply(new THREE.Matrix4().makeScale(unit, unit, unit)));
+    const ns = d.documentElement.namespaceURI;
+    const usesUUID = !!d.querySelector('object[*|UUID]');
+    const ob = d.createElementNS(ns, 'object');
+    ob.setAttribute('id', newId);
+    ob.setAttribute('type', 'model');
+    if (usesUUID) ob.setAttributeNS(PROD_NS, 'p:UUID', crypto.randomUUID());
+    if (!bambu) {
+      // plain 3MF: give the stamp its own display color
+      const bm = d.createElementNS(ns, 'basematerials');
+      bm.setAttribute('id', String(maxId + 3));
+      const base = d.createElementNS(ns, 'base');
+      base.setAttribute('name', 'stamp');
+      base.setAttribute('displaycolor', P.colArt.toUpperCase() + 'FF');
+      bm.append(base);
+      const res = d.getElementsByTagName('resources')[0];
+      res.insertBefore(bm, res.firstChild);
+      ob.setAttribute('pid', bm.getAttribute('id'));
+      ob.setAttribute('pindex', '0');
+    }
+    setMesh(ob, meshXML(local));
+    d.getElementsByTagName('resources')[0].append(ob);
+
+    const rootNS = rootD.documentElement.namespaceURI;
+    const comp = id => {
+      const c = rootD.createElementNS(rootNS, 'component');
+      c.setAttribute('objectid', id);
+      return c;
+    };
+    if (comps) {
+      const c = comp(newId);
+      if (zipKey(files, stampPath) !== zipKey(files, S.root)) c.setAttributeNS(PROD_NS, 'p:path', '/' + zipKey(files, stampPath));
+      c.setAttribute('transform', '1 0 0 0 1 0 0 0 1 0 0 0');
+      if (usesUUID) c.setAttributeNS(PROD_NS, 'p:UUID', crypto.randomUUID());
+      comps.append(c);
+    } else {
+      // mesh-only object: wrap it and the stamp in a new parent so they stay one object
+      const wrapId = String(maxId + 2);
+      const w = rootD.createElementNS(rootNS, 'object');
+      w.setAttribute('id', wrapId);
+      w.setAttribute('type', 'model');
+      const cs = rootD.createElementNS(rootNS, 'components');
+      cs.append(comp(ts.topId), comp(newId));
+      w.append(cs);
+      rootD.getElementsByTagName('resources')[0].append(w);
+      [...rootD.getElementsByTagName('item')].filter(it => it.getAttribute('objectid') === ts.topId).forEach(it => it.setAttribute('objectid', wrapId));
+    }
+    if (bambu) {
+      const co = byId(bambu, 'object', ts.topId);
+      if (co) {
+        const part = bambu.createElement('part');
+        part.setAttribute('id', newId);
+        part.setAttribute('subtype', 'normal_part');
+        part.append(
+          metaEl(bambu, { key: 'name', value: 'STAMP' }),
+          metaEl(bambu, { key: 'matrix', value: IDENTITY16 }),
+          metaEl(bambu, { key: 'extruder', value: extruder }),
+        );
+        co.append(part);
+      }
+    }
+  }
+
+  // ---- parts the user deleted (non-Prusa)
+  const emptyParents = new Map();
+  for (const s of removedSrcs.filter(s => s.kind !== 'prusa')) {
+    if (s.parent) {
+      const pe = byId(dom(s.parent.path), 'object', s.parent.objId);
+      const c = pe?.getElementsByTagName('component')[s.parent.compIndex];
+      if (c) { c.setAttribute('data-gone', '1'); emptyParents.set(pe, s); }
+    } else if (s.itemIndex >= 0) {
+      rootD.getElementsByTagName('item')[s.itemIndex]?.setAttribute('data-gone', '1');
+    }
+    if (bambu) byId(byId(bambu, 'object', s.topId) || bambu, 'part', s.objId)?.remove();
+  }
+  for (const d of Object.values(doms)) d.querySelectorAll('[data-gone]').forEach(e => e.remove());
+  for (const [pe, s] of emptyParents) {
+    if (pe.getElementsByTagName('component').length) continue;
+    // a top-level object lost all its parts: drop it from the build and the slicer settings
+    if (s.parent.objId === s.topId) {
+      [...rootD.getElementsByTagName('item')].filter(it => it.getAttribute('objectid') === s.topId).forEach(it => it.remove());
+      pe.remove();
+    }
+  }
+  if (bambu) {
+    const live = new Set([...rootD.getElementsByTagName('item')].map(it => it.getAttribute('objectid')));
+    for (const o of [...bambu.getElementsByTagName('object')]) if (!live.has(o.getAttribute('id'))) o.remove();
+    for (const mi of [...bambu.getElementsByTagName('model_instance')]) {
+      const id = mi.querySelector('metadata[key="object_id"]')?.getAttribute('value');
+      if (id && !live.has(id)) mi.remove();
+    }
+    for (const ai of [...bambu.getElementsByTagName('assemble_item')]) if (!live.has(ai.getAttribute('object_id'))) ai.remove();
+  }
+
+  // stale sliced output would not match the new geometry
+  for (const k of Object.keys(files)) if (/\.gcode(\.md5)?$/i.test(k)) { delete files[k]; notes.push('REMOVED OLD G-CODE: RE-SLICE'); }
+
+  for (const [k, d] of Object.entries(doms)) {
+    const s = new XMLSerializer().serializeToString(d).replace(/^<\?xml[^>]*\?>\s*/, '');
+    files[k] = strToU8('<?xml version="1.0" encoding="UTF-8"?>\n' + s);
+  }
+  const zip = zipSync(files, { level: 6 });
+  [...new Set(notes)].forEach(n => log(n));
+  download(new Blob([zip], { type: 'model/3mf' }), baseName() + '_stamped.3mf');
+}
+
+/* ============================================================
+   ACTIONS + KEYS
+   ============================================================ */
+const FX_LEVELS = ['', 'fx-full', 'nofx'], FX_NAMES = ['LITE', 'FULL (TUBE WARP, SLOWER)', 'OFF'];
+let fxLevel = 0;
+function toggleCRT() {
+  document.body.classList.remove(...FX_LEVELS.filter(Boolean));
+  fxLevel = (fxLevel + 1) % FX_LEVELS.length;
+  if (FX_LEVELS[fxLevel]) document.body.classList.add(FX_LEVELS[fxLevel]);
+  log('CRT FX: ' + FX_NAMES[fxLevel]);
+}
+function help(show) {
+  $('#modal').hidden = !show;
+  if (show) $('#modal .btn').focus();
+}
+
+const actions = {
+  loadStl: () => $('#fStl').click(),
+  loadImg: () => $('#fImg').click(),
+  demo: loadDemo,
+  build: () => buildAsync(),
+  exp3mf: export3MF,
+  expStl: () => exportSTL('merged'),
+  expBase: () => exportSTL('base'),
+  expStamp: () => exportSTL('stamp'),
+  recenter: () => { placeDefault(false); markDirty(); },
+  upright: () => { if (place.p) { place.ref = upRef(place.n); P.rot = 0; ui.rot.set(0); markDirty(); } },
+  clearSession: () => { if (confirm('FORGET THE SAVED MODEL, IMAGE AND SETTINGS?')) clearSession(); },
+  centerH: () => centerOnFace(true, false),
+  centerV: () => centerOnFace(false, true),
+  centerHV: () => centerOnFace(true, true),
+  face: b => placeFrom(new V3(...b.dataset.dir.split(',').map(Number))),
+  flip: () => { if (ready()) placeFrom(place.n.clone()); },
+  help: () => help(true),
+  closeHelp: () => help(false),
+  crt: toggleCRT,
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (b) actions[b.dataset.act]?.(b);
+});
+
+function setParam(k, v) { P[k] = v; ui[k].set(v); onParam(k); }
+
+addEventListener('keydown', e => {
+  const fk = { F1: 'help', F2: 'loadStl', F3: 'loadImg', F4: 'demo', F5: 'build', F8: 'expStl', F9: 'exp3mf', F10: 'crt' }[e.key];
+  if (fk) { e.preventDefault(); actions[fk](); return; }
+  if (e.key === 'Escape') { help(false); return; }
+  if (e.key === 'F7' || e.key === 'Home') { e.preventDefault(); fitCamera(); return; }
+  // undo / redo (number fields keep their own text undo)
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.target.matches('input[type=number]')) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
+  }
+  if (e.target.matches('input') || e.ctrlKey || e.metaKey || e.altKey) return;
+  const fine = e.shiftKey;
+  switch (e.key.toLowerCase()) {
+    case 'q': setParam('rot', ((P.rot - (fine ? 1 : 5) + 540) % 360) - 180); break;
+    case 'e': setParam('rot', ((P.rot + (fine ? 1 : 5) + 540) % 360) - 180); break;
+    case '[': setParam('size', Math.max(1, +(P.size / 1.05).toFixed(2))); break;
+    case ']': setParam('size', +(P.size * 1.05).toFixed(2)); break;
+    case 'm': setParam('mirror', !P.mirror); break;
+    case 'f': actions.flip(); break;
+    case 'arrowleft': nudge(fine ? -2 : -0.5, 0); break;
+    case 'arrowright': nudge(fine ? 2 : 0.5, 0); break;
+    case 'arrowup': nudge(0, fine ? 2 : 0.5); break;
+    case 'arrowdown': nudge(0, fine ? -2 : -0.5); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+
+/* ============================================================
+   GO
+   ============================================================ */
+initControls();
+drawPreview();
+updateHud();
+log('STL-STAMPER READY. PRESS F1 FOR HELP.');
+window.__bootReady?.();
+restoreSession();
+</script>
+</body>
+</html>
