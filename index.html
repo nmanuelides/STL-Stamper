@@ -48,7 +48,6 @@
         <button class="btn primary" data-act="loadStl">F2 LOAD STL / 3MF</button>
         <div class="info" id="stlInfo">NO MODEL</div>
         <div id="parts"></div>
-        <button class="btn" data-act="demo">F4 LOAD DEMO</button>
         <div class="hint">...OR DROP FILES ANYWHERE<br>WORK IS SAVED IN THIS BROWSER AND COMES BACK ON REFRESH</div>
         <button class="btn" data-act="clearSession">NEW SESSION (FORGET ALL)</button>
       </section>
@@ -60,7 +59,14 @@
           <button class="btn primary" data-act="addShape">+ SHAPE</button>
         </div>
         <div id="stampList"></div>
-        <div class="hint">CLICK A ROW OR A STAMP IN THE VIEWPORT TO EDIT IT &middot; DEL KEY REMOVES IT</div>
+        <div id="alignRow" hidden>
+          <div class="hint">ALIGN TO STAMP (1):</div>
+          <div class="row">
+            <button class="btn" data-act="alignRow">ROW (SAME HEIGHT)</button>
+            <button class="btn" data-act="alignCol">COLUMN (SAME LINE)</button>
+          </div>
+        </div>
+        <div class="hint">CLICK = SELECT &middot; CTRL+CLICK = ADD/REMOVE &middot; SHIFT+CLICK = RANGE &middot; DEL KEY REMOVES. MOVE / SIZE / ROTATE APPLY TO ALL SELECTED</div>
       </section>
 
       <section class="win" data-kind="text"><h2>TEXT</h2>
@@ -179,11 +185,11 @@
     <button data-act="help"><b>1</b><span>HELP</span></button>
     <button data-act="loadStl"><b>2</b><span>STL</span></button>
     <button data-act="loadImg"><b>3</b><span>IMAGE</span></button>
-    <button data-act="demo"><b>4</b><span>DEMO</span></button>
     <button data-act="build"><b>5</b><span>BUILD</span></button>
     <button data-act="expStl"><b>8</b><span>STL</span></button>
     <button data-act="exp3mf"><b>9</b><span>3MF</span></button>
     <button data-act="crt"><b>10</b><span>CRT FX</span></button>
+    <button data-act="theme"><b>T</b><span>AMBER / GREEN</span></button>
   </footer>
 
   <div class="scanlines fx"></div>
@@ -199,6 +205,11 @@
   <svg id="gizmo" aria-hidden="true">
     <polygon class="gz-frame"/>
     <line class="gz-stem"/>
+    <g class="gz-others"></g>
+    <rect class="gz-side" data-s="0" width="10" height="10"/>
+    <rect class="gz-side" data-s="1" width="10" height="10"/>
+    <rect class="gz-side" data-s="2" width="10" height="10"/>
+    <rect class="gz-side" data-s="3" width="10" height="10"/>
     <rect class="gz-corner" data-h="0" width="12" height="12"/>
     <rect class="gz-corner" data-h="1" width="12" height="12"/>
     <rect class="gz-corner" data-h="2" width="12" height="12"/>
@@ -253,6 +264,12 @@ KEYS
                 + SHIFT: LOCK TO THE FIRST DIRECTION MOVED
                 (HORIZONTAL OR VERTICAL) UNTIL SHIFT IS UP
                 DOUBLE-CLICK THE MODEL = PUT STAMP THERE
+ CTRL+CLICK ... ADD / REMOVE A STAMP FROM THE SELECTION
+ SHIFT+CLICK .. SELECT A RANGE IN THE STAMPS LIST
+                MOVE / SIZE / ROTATE THEN APPLY TO THE GROUP;
+                ROW / COLUMN ALIGN THEM TO THE FIRST PICKED
+ SIDE HANDLES . (SHAPES) STRETCH ONE AXIS: SQUARE -> RECT
+ T ............ UI COLOR: AMBER / GREEN PHOSPHOR
  CLICK STAMP .. SELECTS IT: CORNER HANDLES RESIZE,
                 ROUND HANDLE ROTATES (+SHIFT = 15 DEG STEPS).
                 CLICK ELSEWHERE OR ESC TO DESELECT
@@ -299,6 +316,9 @@ THE BED (Z = 0) WHEN LOADED.</pre>
 <input type="file" id="fImg" accept=".svg,.png,.jpg,.jpeg,.webp,.gif,.bmp,image/*" hidden>
 
 <script>
+  // saved UI theme first, so even the boot screen shows in it
+  try { if (localStorage.getItem('stl-stamper-theme') === 'green') document.body.classList.add('theme-green'); } catch (e) { /* default amber */ }
+
   // CRT barrel map: R/G encode how far each pixel samples outward (stronger toward the corners)
   (function () {
     const c = document.createElement('canvas');
@@ -429,6 +449,7 @@ function log(msg, cls) {
   $('#cmd').textContent = msg.length > 48 ? msg.slice(0, 48) + '...' : msg;
 }
 const fmt = (v, d = 1) => (+v).toFixed(d);
+const cssVar = name => getComputedStyle(document.body).getPropertyValue(name).trim();
 
 function updateHud() {
   const parts = [P.mode.toUpperCase()];
@@ -482,11 +503,13 @@ const rim = new THREE.DirectionalLight(0xfff0e0, 0.6);
 rim.position.set(-1, 1, -0.4);
 scene.add(rim);
 
-let grid = null;
+let grid = null, gridExtent = 100;
 function setGrid(extent) {
   if (grid) { scene.remove(grid); grid.geometry.dispose(); }
   const size = Math.max(50, Math.ceil(extent * 2 / 10) * 10);
-  grid = new THREE.GridHelper(size, size / 5, 0x7a3000, 0x2a1000);
+  gridExtent = extent;
+  const green = document.body.classList.contains('theme-green');
+  grid = new THREE.GridHelper(size, size / 5, green ? 0x137a30 : 0x7a3000, green ? 0x08280f : 0x2a1000);
   grid.rotation.x = Math.PI / 2;
   grid.position.z = -0.01;
   scene.add(grid);
@@ -1289,7 +1312,7 @@ function drawPreview() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
   if (!art) {
-    ctx.fillStyle = '#6e2e00';
+    ctx.fillStyle = cssVar('--amber-dim');
     ctx.font = `${20 * dpr}px VT323, monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(activeStamp ? 'NOTHING TRACED' : 'NO STAMP', cw / 2, ch / 2 + 6 * dpr);
@@ -1305,10 +1328,10 @@ function drawPreview() {
     for (let i = 1; i < loop.length; i++) path.lineTo(loop[i].x, loop[i].y);
     path.closePath();
   }
-  ctx.fillStyle = '#ff8400';
+  ctx.fillStyle = cssVar('--amber');
   ctx.fill(path, 'evenodd');
   ctx.lineWidth = 1.2 / s;
-  ctx.strokeStyle = '#ffc58a';
+  ctx.strokeStyle = cssVar('--amber-hi');
   ctx.stroke(path);
   ctx.restore();
 }
@@ -1561,7 +1584,12 @@ function withStamp(s, fn) {
 let swappedStamp = null;
 const curStamp = () => swappedStamp || activeStamp;
 
-function activateStamp(s) {
+// selected stamps in the order they were picked: [0] is the anchor for aligning.
+// The active stamp (the one the panels edit) is always part of the selection.
+let selection = [], rangeAnchor = null;
+
+function activateStamp(s, keepSelection = false) {
+  if (!keepSelection) { selection = s ? [s] : []; rangeAnchor = s; }
   if (s) {
     activeStamp = s;
     Object.assign(P, s.params);
@@ -1609,14 +1637,100 @@ const freshParams = kind => ({
 function addTextStamp() { addStamp('text', 'TEXT', { ...freshParams('text'), size: Math.max(P.size, 30) }); }
 function addShapeStamp() { addStamp('shape', 'SHAPE', freshParams('shape')); }
 
-function removeStamp(s) {
-  const i = stamps.indexOf(s);
-  if (i < 0) return;
-  stamps.splice(i, 1);
-  s.mesh.visible = false;  // kept (with its geometry) in the registry for undo
-  log('DELETED STAMP ' + stampLabel(s));
+function removeStamp(s) { removeStamps([s]); }
+function removeStamps(list) {
+  list = list.filter(s => stamps.includes(s));
+  if (!list.length) return;
+  const i = stamps.indexOf(list[0]);
+  for (const s of list) {
+    stamps.splice(stamps.indexOf(s), 1);
+    s.mesh.visible = false;  // kept (with its geometry) in the registry for undo
+  }
+  log(list.length === 1 ? 'DELETED STAMP ' + stampLabel(list[0]) : `DELETED ${list.length} STAMPS`);
   activateStamp(stamps[Math.min(i, stamps.length - 1)] || null);
   markDirty();
+}
+
+// click = only this one, Ctrl+click = add / remove, Shift+click = range from the last plain/Ctrl pick
+function selectStamp(s, e) {
+  if (e?.shiftKey && rangeAnchor && stamps.includes(rangeAnchor)) {
+    const a = stamps.indexOf(rangeAnchor), b = stamps.indexOf(s);
+    const range = stamps.slice(Math.min(a, b), Math.max(a, b) + 1);
+    selection = [rangeAnchor, ...range.filter(x => x !== rangeAnchor)];
+  } else if (e && (e.ctrlKey || e.metaKey)) {
+    if (selection.includes(s) && selection.length > 1) {
+      selection = selection.filter(x => x !== s);
+      activateStamp(s === activeStamp ? selection[selection.length - 1] : activeStamp, true);
+      return;
+    }
+    if (!selection.includes(s)) selection.push(s);
+    rangeAnchor = s;
+  } else {
+    selection = [s];
+    rangeAnchor = s;
+  }
+  stampSelected = true;
+  activateStamp(s, true);
+}
+
+/* ---------- group transforms: move / resize / rotate the whole selection ---------- */
+const groupOthers = () => selection.filter(o => o !== activeStamp && stamps.includes(o) && o.place.p);
+function groupCenter() {
+  const pts = selection.filter(o => stamps.includes(o) && o.place.p).map(o => o.place.p);
+  return pts.reduce((c, p) => c.add(p), new V3()).divideScalar(pts.length || 1);
+}
+// slide the others by the same displacement the active stamp just made
+function groupMove(delta) {
+  for (const o of groupOthers()) {
+    const W = o.place.p.clone().add(delta);
+    withStamp(o, () => { projectToSurface(W, o.place.n, Math.max(o.params.size, 5), o.place.p); updatePreviewMesh(); });
+  }
+}
+// size / rotation changed on the active stamp: apply the same change to the group around its center
+function groupParam(k, prev, next) {
+  const others = groupOthers();
+  if (!others.length || !activeStamp.place.p) return;
+  const c = groupCenter(), N = activeStamp.place.n;
+  const all = [activeStamp, ...others];
+  if (k === 'size') {
+    if (!(prev > 0)) return;
+    const f = next / prev;
+    for (const o of all) {
+      const W = c.clone().add(o.place.p.clone().sub(c).multiplyScalar(f));
+      if (o !== activeStamp) o.params.size = Math.max(1, +(o.params.size * f).toFixed(2));
+      withStamp(o, () => projectToSurface(W, o.place.n, Math.max(o.params.size, 5), o.place.p));
+    }
+  } else {
+    const d = next - prev;
+    const q = new THREE.Quaternion().setFromAxisAngle(N, d * DEG);
+    for (const o of all) {
+      const W = c.clone().add(o.place.p.clone().sub(c).applyQuaternion(q));
+      if (o !== activeStamp) {
+        const sign = o.place.n.dot(N) >= 0 ? 1 : -1;
+        o.params.rot = ((Math.round(o.params.rot + sign * d) + 540) % 360) - 180;
+      }
+      withStamp(o, () => projectToSurface(W, o.place.n, Math.max(o.params.size, 5), o.place.p));
+    }
+  }
+  for (const o of others) {
+    if (k === 'size' && o.kind === 'shape') retrace(o); // stroke widths are in mm
+    else withStamp(o, updatePreviewMesh);
+  }
+}
+
+// line the selection up with the FIRST selected stamp, in that stamp's face directions
+function alignSelected(kind) {
+  const [anchor, ...rest] = selection.filter(s => stamps.includes(s) && s.place.p);
+  if (!anchor || !rest.length) { log('SELECT 2+ STAMPS FIRST (CTRL / SHIFT + CLICK)', 'err'); return; }
+  const N = anchor.place.n, V = anchor.place.ref, H = new V3().crossVectors(V, N);
+  const axis = kind === 'row' ? V : H;   // row: same height on the face, column: same horizontal spot
+  for (const s of rest) {
+    const d = s.place.p.clone().sub(anchor.place.p);
+    const W = s.place.p.clone().addScaledVector(axis, -d.dot(axis));
+    withStamp(s, () => projectToSurface(W, s.place.n, Math.max(s.params.size, 5) + Math.abs(d.dot(N)), s.place.p));
+  }
+  log(`ALIGNED ${rest.length} TO ${stampLabel(anchor)} (${kind === 'row' ? 'ROW' : 'COLUMN'})`);
+  markDirty('all');
 }
 
 function duplicateStamp(s) {
@@ -1635,13 +1749,20 @@ const stampLabel = s => s.kind === 'text' ? `"${String(s.params.txtText).split('
 function renderStampList() {
   const el = $('#stampList');
   if (!stamps.length) { el.innerHTML = '<div class="hint">NO STAMPS YET - ADD AN IMAGE, TEXT OR SHAPE</div>'; return; }
-  el.innerHTML = stamps.map(s => `<div class="part stamp-row${s === activeStamp ? ' sel' : ''}" data-sid="${s.id}">
-      <span class="pbox">${s === activeStamp ? '(*)' : '( )'}</span>
+  const multi = selection.length > 1;
+  $('#alignRow').hidden = !multi;
+  el.innerHTML = stamps.map(s => {
+    const n = selection.indexOf(s);
+    // with several selected, the number is the pick order (1 = alignment anchor)
+    const box = n < 0 ? '( )' : multi ? `(${n + 1})` : '(*)';
+    return `<div class="part stamp-row${s === activeStamp ? ' sel' : ''}${n >= 0 ? ' picked' : ''}" data-sid="${s.id}">
+      <span class="pbox">${box}</span>
       <span class="chip" style="background:${s.params.colArt}"></span>
       <span class="pname">${s.kind === 'image' ? 'IMG' : s.kind === 'text' ? 'TXT' : 'SHP'} ${stampLabel(s).replace(/</g, '&lt;')}</span>
       <em>${s.params.mode.slice(0, 3).toUpperCase()}</em>
       <button class="pdel" data-sdup="${s.id}" title="DUPLICATE">DUP</button>
-      <button class="pdel" data-sdel="${s.id}" title="DELETE STAMP">DEL</button></div>`).join('');
+      <button class="pdel" data-sdel="${s.id}" title="DELETE STAMP">DEL</button></div>`;
+  }).join('');
 }
 
 $('#stampList').addEventListener('click', e => {
@@ -1651,7 +1772,7 @@ $('#stampList').addEventListener('click', e => {
   const dup = e.target.closest('[data-sdup]');
   if (dup) return duplicateStamp(byId(dup.dataset.sdup));
   const row = e.target.closest('[data-sid]');
-  if (row) { stampSelected = true; activateStamp(byId(row.dataset.sid)); }
+  if (row) selectStamp(byId(row.dataset.sid), e);
 });
 
 // show only the panels that apply to the active stamp's kind
@@ -2121,13 +2242,21 @@ function pickStamp(e) {
 }
 
 vp.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !model || e.target.closest('#gizmo .gz-corner, #gizmo .gz-rot')) return;
+  if (e.button !== 0 || !model || e.target.closest('#gizmo .gz-corner, #gizmo .gz-rot, #gizmo .gz-side')) return;
   setRay(e);
   // clicking a stamp activates + selects it (resize / rotate handles); clicking elsewhere deselects
   const s = pickStamp(e);
-  stampSelected = !!s;
-  if (!s) return;
-  if (s !== activeStamp) activateStamp(s);
+  if (!s) {
+    stampSelected = false;
+    if (selection.length > 1) { selection = activeStamp ? [activeStamp] : []; renderStampList(); }
+    return;
+  }
+  // Ctrl+click toggles it in the selection; pressing on an already selected stamp keeps the
+  // group so it can be dragged together; anything else selects just that stamp
+  if (e.ctrlKey || e.metaKey) { selectStamp(s, e); return; }
+  stampSelected = true;
+  if (selection.includes(s)) { if (s !== activeStamp) activateStamp(s, true); }
+  else selectStamp(s, null);
   const c = screenOf(place.p);
   grabOffset = { x: e.clientX - c.x, y: e.clientY - c.y };
   moved = false;
@@ -2147,8 +2276,10 @@ vp.addEventListener('pointermove', e => {
       const hit = pick.intersectObject(modelMesh, false)[0];
       if (!hit) return;
       if (!moved) { moved = true; if (result) clearResult(); }
+      const before = place.p.clone();
       if (ev.shiftKey) dragLocked(hit.point);
       else { axisLock = null; placeAtHit(hit, pick.ray.direction, false); }
+      if (selection.length > 1) groupMove(place.p.clone().sub(before));
       updatePreview();
     } else if (!ev.buttons) {
       setRay(ev);
@@ -2162,7 +2293,7 @@ vp.addEventListener('pointermove', e => {
 let stampSelected = false, gizmoDrag = null;
 const gzEls = {
   svg: $('#gizmo'), frame: $('#gizmo .gz-frame'), stem: $('#gizmo .gz-stem'),
-  corners: $$('#gizmo .gz-corner'), rot: $('#gizmo .gz-rot'),
+  corners: $$('#gizmo .gz-corner'), rot: $('#gizmo .gz-rot'), sides: $$('#gizmo .gz-side'),
 };
 const vpPx = v => {
   const s = v.clone().project(camera);
@@ -2180,19 +2311,46 @@ function gizmoGeometry() {
   // screen handedness of the stamp frame: tells which way on-screen rotation maps to ROTATE
   const u = at(w, 0), v = at(0, h);
   const cross = (u.x - center.x) * (v.y - center.y) - (u.y - center.y) * (v.x - center.x);
-  return { corners, center, top, cross };
+  // side handles (top, right, bottom, left) and the on-screen directions of the stamp's width / height
+  const sides = [top, u, at(0, -h), at(-w, 0)];
+  const uDir = { x: u.x - center.x, y: u.y - center.y }, vDir = { x: v.x - center.x, y: v.y - center.y };
+  return { corners, center, top, cross, sides, uDir, vDir };
+}
+
+// dashed outlines for the other stamps of a multi-selection
+const gzOthers = $('#gizmo .gz-others');
+function drawOtherFrames() {
+  const others = selection.length > 1 ? groupOthers().filter(o => o.art) : [];
+  while (gzOthers.children.length < others.length) {
+    gzOthers.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'polygon')).setAttribute('class', 'gz-frame gz-frame2');
+  }
+  [...gzOthers.children].forEach((poly, i) => {
+    const o = others[i];
+    if (!o) { poly.setAttribute('points', ''); return; }
+    const g = withStamp(o, gizmoGeometry);
+    poly.setAttribute('points', g.center.behind ? '' : g.corners.map(p => `${p.x},${p.y}`).join(' '));
+  });
 }
 
 function updateGizmo() {
   const show = stampSelected && ready() && !!art;
   gzEls.svg.style.display = show ? 'block' : 'none';
   if (!show) return;
+  drawOtherFrames();
   const g = gizmoGeometry();
   if (g.center.behind) { gzEls.svg.style.display = 'none'; return; }
   gzEls.frame.setAttribute('points', g.corners.map(p => `${p.x},${p.y}`).join(' '));
   g.corners.forEach((p, i) => {
     gzEls.corners[i].setAttribute('x', p.x - 6);
     gzEls.corners[i].setAttribute('y', p.y - 6);
+  });
+  // shapes can be stretched along one side (square -> rectangle, circle -> ellipse); a line only lengthwise
+  const isShape = activeStamp?.kind === 'shape', isLine = isShape && P.shpType === 'line';
+  g.sides.forEach((p, i) => {
+    const el = gzEls.sides[i];
+    el.style.display = isShape && !(isLine && i % 2 === 0) ? '' : 'none';
+    el.setAttribute('x', p.x - 5);
+    el.setAttribute('y', p.y - 5);
   });
   let dx = g.top.x - g.center.x, dy = g.top.y - g.center.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -2214,7 +2372,7 @@ function overStamp(e) {
   return !g.center.behind && pip(m.x, m.y, g.corners);
 }
 gzEls.svg.addEventListener('pointerdown', e => {
-  const el = e.target.closest('.gz-corner, .gz-rot');
+  const el = e.target.closest('.gz-corner, .gz-rot, .gz-side');
   if (!el || e.button !== 0) return;
   e.stopPropagation();
   e.preventDefault();
@@ -2222,12 +2380,19 @@ gzEls.svg.addEventListener('pointerdown', e => {
   el.classList.add('active');
   const g = gizmoGeometry(), m = gizmoPointer(e);
   gizmoDrag = {
-    el, kind: el.classList.contains('gz-rot') ? 'rot' : 'size',
+    el, kind: el.classList.contains('gz-rot') ? 'rot' : el.classList.contains('gz-side') ? 'side' : 'size',
     c: g.center, cross: g.cross,
     dist: Math.max(4, Math.hypot(m.x - g.center.x, m.y - g.center.y)),
     ang: Math.atan2(m.y - g.center.y, m.x - g.center.x),
-    size: P.size, rot: P.rot,
+    size: P.size, rot: P.rot, ratio: P.shpRatio, w: art.w, h: art.h,
   };
+  if (gizmoDrag.kind === 'side') {
+    const s = +el.dataset.s;
+    gizmoDrag.axis = s % 2 ? 'U' : 'V';
+    const v = s % 2 ? g.uDir : g.vDir, len = Math.hypot(v.x, v.y) || 1;
+    gizmoDrag.dir = { x: v.x / len, y: v.y / len };
+    gizmoDrag.proj = (m.x - g.center.x) * gizmoDrag.dir.x + (m.y - g.center.y) * gizmoDrag.dir.y || 1;
+  }
   holding = true; // keeps auto-build and undo snapshots for the release
   if (result) clearResult();
 });
@@ -2235,7 +2400,22 @@ gzEls.svg.addEventListener('pointermove', e => {
   const d = gizmoDrag;
   if (!d) return;
   const m = gizmoPointer(e);
-  if (d.kind === 'size') {
+  if (d.kind === 'side') {
+    // stretch one axis of the shape: width / height in mm, then back to ratio + size
+    const f = Math.max(0.05, ((m.x - d.c.x) * d.dir.x + (m.y - d.c.y) * d.dir.y) / d.proj);
+    const W0 = d.w * d.size, H0 = d.h * d.size;
+    const W1 = d.axis === 'U' ? W0 * f : W0, H1 = d.axis === 'V' ? H0 * f : H0;
+    if (P.shpType !== 'line') {
+      P.shpRatio = Math.min(5, Math.max(0.2, +(d.ratio * (W1 / W0) / (H1 / H0)).toFixed(3)));
+      ui.shpRatio.set(P.shpRatio);
+      onParam('shpRatio');
+    }
+    P.size = Math.max(1, +Math.max(W1, H1).toFixed(1));
+    ui.size.set(P.size);
+    skipGroup = true; // a one-axis stretch is for this shape only
+    onParam('size');
+    skipGroup = false;
+  } else if (d.kind === 'size') {
     const k = Math.hypot(m.x - d.c.x, m.y - d.c.y) / d.dist;
     P.size = Math.max(1, +(d.size * k).toFixed(1));
     ui.size.set(P.size);
@@ -2382,7 +2562,9 @@ function nudge(dx, dy) {
   if (!ready()) return;
   const { O, N, U, V } = frame();
   const W = O.clone().addScaledVector(U, dx).addScaledVector(V, dy);
+  const before = place.p.clone();
   projectToSurface(W, N, Math.max(P.size, 5), place.p);
+  if (selection.length > 1) groupMove(place.p.clone().sub(before));
   markDirty();
 }
 
@@ -2390,14 +2572,17 @@ function nudge(dx, dy) {
    UI BINDING
    ============================================================ */
 const ui = {};
+let skipGroup = false;
 function onParam(k) {
   if (k === 'colModel') { matModel.color.set(P.colModel); noteChange(); return; }
   if (k === 'autoBuild') { if (P.autoBuild && !result) scheduleBuild(); return; }
   const s = activeStamp;
   if (k === 'mode') syncModeGroups();
   if (!s) return;
+  const prev = s.params[k];
   s.params[k] = P[k];
   noteChange();
+  if ((k === 'size' || k === 'rot') && selection.length > 1 && !skipGroup) groupParam(k, prev, P[k]);
   if (k === 'colArt') {
     setStampColor(s);
     // a built result keeps its geometry; only its color changes
@@ -3180,6 +3365,18 @@ async function exportPatched3MF() {
 /* ============================================================
    ACTIONS + KEYS
    ============================================================ */
+// UI color theme: amber (default) or 80s green phosphor; remembered per browser
+function applyTheme(green, announce) {
+  document.body.classList.toggle('theme-green', green);
+  renderer.setClearColor(green ? 0x030805 : 0x080503);
+  highlight.material.color.set(cssVar('--amber'));
+  setGrid(gridExtent);
+  drawPreview();
+  try { localStorage.setItem('stl-stamper-theme', green ? 'green' : 'amber'); } catch { /* not stored */ }
+  if (announce) log('THEME: ' + (green ? 'GREEN PHOSPHOR' : 'AMBER'));
+}
+const toggleTheme = () => applyTheme(!document.body.classList.contains('theme-green'), true);
+
 const FX_LEVELS = ['', 'fx-full', 'nofx'], FX_NAMES = ['LITE', 'FULL (TUBE WARP, SLOWER)', 'OFF'];
 let fxLevel = 0;
 function toggleCRT() {
@@ -3196,10 +3393,6 @@ function help(show) {
 const actions = {
   loadStl: () => $('#fStl').click(),
   loadImg: () => $('#fImg').click(),
-  demo: () => {
-    if ((model || stamps.length) && !confirm('LOAD THE DEMO? IT REPLACES YOUR MODEL AND ADDS A DEMO STAMP.\n(CTRL+Z UNDOES IT)')) return;
-    loadDemo();
-  },
   build: () => buildAsync(),
   exp3mf: export3MF,
   expStl: () => exportSTL('merged'),
@@ -3213,6 +3406,8 @@ const actions = {
   centerHV: () => centerOnFace(true, true),
   face: b => placeFrom(new V3(...b.dataset.dir.split(',').map(Number))),
   flip: () => { if (ready()) placeFrom(place.n.clone()); },
+  alignRow: () => alignSelected('row'),
+  alignCol: () => alignSelected('col'),
   addText: addTextStamp,
   addShape: addShapeStamp,
   replaceImg: () => { if (activeStamp?.kind === 'image') { replaceTarget = activeStamp; $('#fImg').click(); } },
@@ -3221,6 +3416,7 @@ const actions = {
   help: () => help(true),
   closeHelp: () => help(false),
   crt: toggleCRT,
+  theme: toggleTheme,
 };
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
@@ -3230,7 +3426,7 @@ document.addEventListener('click', e => {
 function setParam(k, v) { P[k] = v; ui[k].set(v); onParam(k); }
 
 addEventListener('keydown', e => {
-  const fk = { F1: 'help', F2: 'loadStl', F3: 'loadImg', F4: 'demo', F5: 'build', F8: 'expStl', F9: 'exp3mf', F10: 'crt' }[e.key];
+  const fk = { F1: 'help', F2: 'loadStl', F3: 'loadImg', F5: 'build', F8: 'expStl', F9: 'exp3mf', F10: 'crt' }[e.key];
   if (fk) { e.preventDefault(); actions[fk](); return; }
   if (e.key === 'Escape') { help(false); closeFonts(); stampSelected = false; return; }
   if (e.key === 'F7' || e.key === 'Home') { e.preventDefault(); fitCamera(); return; }
@@ -3242,7 +3438,11 @@ addEventListener('keydown', e => {
     if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
   }
   if (e.target.matches('input, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
-  if ((e.key === 'Delete' || e.key === 'Backspace') && activeStamp) { e.preventDefault(); removeStamp(activeStamp); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && activeStamp) {
+    e.preventDefault();
+    removeStamps(selection.length ? selection : [activeStamp]);
+    return;
+  }
   const fine = e.shiftKey;
   switch (e.key.toLowerCase()) {
     case 'q': setParam('rot', ((P.rot - (fine ? 1 : 5) + 540) % 360) - 180); break;
@@ -3251,6 +3451,7 @@ addEventListener('keydown', e => {
     case ']': setParam('size', +(P.size * 1.05).toFixed(2)); break;
     case 'm': setParam('mirror', !P.mirror); break;
     case 'f': actions.flip(); break;
+    case 't': toggleTheme(); break;
     case 'arrowleft': nudge(fine ? -2 : -0.5, 0); break;
     case 'arrowright': nudge(fine ? 2 : 0.5, 0); break;
     case 'arrowup': nudge(0, fine ? 2 : 0.5); break;
@@ -3264,6 +3465,7 @@ addEventListener('keydown', e => {
    GO
    ============================================================ */
 initControls();
+try { if (localStorage.getItem('stl-stamper-theme') === 'green') applyTheme(true, false); } catch { /* default amber */ }
 activateStamp(null);
 updateHud();
 log('STL-STAMPER READY. PRESS F1 FOR HELP.');
