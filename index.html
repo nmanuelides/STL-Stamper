@@ -1441,11 +1441,14 @@ function projectToSurface(W, N, reach, out) {
     const dd = Math.abs(h.distance - reach);
     if (dd < bd) { bd = dd; best = h; }
   }
-  return best ? out.copy(best.point) : out.copy(W);
+  out.copy(best ? best.point : W);
+  return !!best;
 }
 
-// closed solid: caps follow the surface, offset +hTop / -hBot along the stamp normal
-function brushGeometry(hTop, hBot) {
+// closed solid: caps follow the surface, offset +hTop / -hBot along the stamp normal.
+// missLift: where a point misses the model (stamp hanging past an edge) it is lifted this far
+// out along the normal, so that part of the brush ends cleanly instead of slicing the edge
+function brushGeometry(hTop, hBot, missLift = 0) {
   const prep = getPrep();
   const { O, N, U, V } = frame();
   const S = P.size, reach = S * 0.6 + 2;
@@ -1462,7 +1465,8 @@ function brushGeometry(hTop, hBot) {
     const n = sp.n, base = vo;
     for (let i = 0; i < n; i++) {
       W.copy(O).addScaledVector(U, sp.pts[i * 2] * S).addScaledVector(V, sp.pts[i * 2 + 1] * S);
-      if (P.conform) projectToSurface(W, N, reach, s); else s.copy(W);
+      if (P.conform) { if (!projectToSurface(W, N, reach, s) && missLift) s.addScaledVector(N, missLift); }
+      else s.copy(W);
       const t = (base + i) * 3, b = (base + n + i) * 3;
       pos[t] = s.x + N.x * hTop; pos[t + 1] = s.y + N.y * hTop; pos[t + 2] = s.z + N.z * hTop;
       pos[b] = s.x - N.x * hBot; pos[b + 1] = s.y - N.y * hBot; pos[b + 2] = s.z - N.z * hBot;
@@ -2117,10 +2121,19 @@ function csgPlan(list) {
     }
   });
   const baseStep = baseKey === 'model' ? -1 : steps.length - 1;
+  // overlapping reliefs: an earlier one in the list keeps the overlap, so bodies never interpenetrate
+  const reliefs = [];
   list.forEach((b, i) => {
     if (b.mode !== 'relief') return;
-    steps.push({ a: 'b' + i, b: baseKey, op: 'sub' });
+    steps.push({ a: 'b' + i, b: baseKey, op: 'sub', as: 'r' + i });
+    let cur = 'r' + i;
+    for (const j of reliefs) {
+      if (!list[i].geom.boundingBox.intersectsBox(list[j].geom.boundingBox)) continue;
+      steps.push({ a: cur, b: 'b' + j, op: 'sub', as: `r${i}x${j}` });
+      cur = `r${i}x${j}`;
+    }
     outs.push({ step: steps.length - 1, i });
+    reliefs.push(i);
   });
   return { steps, outs, baseStep };
 }
@@ -2133,9 +2146,13 @@ async function build() {
   const t0 = performance.now();
   try {
     clearResult();
-    const brushes = stamps.filter(stampReady).map(s => withStamp(s, () => {
+    // each stamp is made 0.02 mm deeper (and reliefs 0.02 mm taller) than the one before it:
+    // overlapping stamps then never share an exactly coplanar floor / top, which CSG mangles
+    const brushes = stamps.filter(stampReady).map((s, i) => withStamp(s, () => {
       const [ht, hb] = buildHeights();
-      return { stamp: s, geom: brushGeometry(ht, hb), mode: P.mode };
+      const eps = i * 0.02;
+      const top = P.mode === 'relief' ? ht + eps : ht, bot = hb + eps;
+      return { stamp: s, geom: brushGeometry(top, bot, bot + 0.3), mode: P.mode };
     }));
     const inputs = {};
     brushes.forEach((b, i) => { inputs['b' + i] = b.geom; });
