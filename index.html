@@ -548,7 +548,11 @@ evaluator.useGroups = false;
 // the working model is the merge of the parts that are switched on
 let parts = [], modelName = '';
 let partUid = 0;
-const partRegistry = new Map(); // every part of the current file, deleted ones too (undo)
+let partRegistry = new Map(); // every part of the current file, deleted ones too (undo)
+// each loaded model is a "generation"; the last few stay in memory so undo can go back to them
+const modelGens = new Map([[0, { registry: new Map(), name: '', src: null, persist: null }]]);
+let modelGen = 0, modelGenSeq = 0;
+const MAX_MODEL_GENS = 4;
 let src3mf = null, removedSrcs = []; // original 3MF package (if any) and parts the user deleted from it
 const modelOffset = new V3();
 
@@ -558,12 +562,18 @@ function cleanGeom(g) {
 }
 const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
 
-function setParts(list, name, src = null) {
-  for (const p of partRegistry.values()) p.geom.dispose();
-  partRegistry.clear();
+function setParts(list, name, src = null, persistData = null) {
+  if (!restoringSession) commitHistory(); // what was there before this load stays undoable
+  partRegistry = new Map();
   list.forEach((p, i) => { p.uid = ++partUid; p.orig = i; partRegistry.set(p.uid, p); });
-  history.length = 0;
-  histIndex = -1;
+  modelGen = ++modelGenSeq;
+  modelGens.set(modelGen, { registry: partRegistry, name, src, persist: persistData });
+  while (modelGens.size > MAX_MODEL_GENS) {
+    const [oldGen, old] = modelGens.entries().next().value;
+    for (const p of old.registry.values()) p.geom.dispose();
+    modelGens.delete(oldGen);
+  }
+  if (persistData && !restoringSession) persist('models', persistData);
   parts = list;
   modelName = name;
   src3mf = src;
@@ -834,13 +844,10 @@ async function loadModelFiles(files) {
   try {
     const loaded = [];
     for (const f of files) loaded.push(await modelParts(f));
-    if (!restoringSession) {
-      const stored = await Promise.all(files.map(async f => ({ name: f.name, bytes: await f.arrayBuffer() })));
-      persist('models', { files: stored });
-    }
-    if (loaded.length === 1) return setParts(loaded[0].parts, files[0].name, loaded[0].src);
+    const stored = { files: await Promise.all(files.map(async f => ({ name: f.name, bytes: await f.arrayBuffer() }))) };
+    if (loaded.length === 1) return setParts(loaded[0].parts, files[0].name, loaded[0].src, stored);
     // several files at once: combine them as parts of one working model
-    setParts(loaded.flatMap(l => l.parts.map(p => ({ ...p, src: null }))), `${files.length} FILES`);
+    setParts(loaded.flatMap(l => l.parts.map(p => ({ ...p, src: null }))), `${files.length} FILES`, null, stored);
     if (loaded.some(l => l.src)) log('MULTIPLE FILES: 3MF EXPORT WILL BE A NEW PROJECT');
   } catch (e) {
     console.error(e);
@@ -1691,12 +1698,13 @@ function snapshot() {
     G: { colModel: P.colModel },
     stamps: stamps.map(s => ({ id: s.id, params: { ...s.params }, place: placeToArr(s.place) })),
     active: activeStamp?.id ?? null,
+    gen: modelGen,
     ids: parts.map(x => x.uid),
     on: parts.map(x => x.on),
     removed: removedSrcs.slice(),
   };
 }
-const snapKey = s => JSON.stringify([s.G, s.stamps, s.active, s.ids, s.on]);
+const snapKey = s => JSON.stringify([s.G, s.stamps, s.active, s.gen, s.ids, s.on]);
 
 function commitHistory() {
   clearTimeout(histTimer);
@@ -1726,13 +1734,29 @@ function restore(snap) {
     P.colModel = snap.G.colModel;
     ui.colModel.set(P.colModel);
     matModel.color.set(P.colModel);
-    const partsChanged = JSON.stringify([snap.ids, snap.on]) !== JSON.stringify([parts.map(x => x.uid), parts.map(x => x.on)]);
+    // going back across a model load: switch to that model (if it is still in memory)
+    let genSwitched = false;
+    if (snap.gen !== modelGen) {
+      const g = modelGens.get(snap.gen);
+      if (g) {
+        modelGen = snap.gen;
+        partRegistry = g.registry;
+        modelName = g.name;
+        src3mf = g.src;
+        $('#exp3mfLabel').textContent = g.src ? 'F9 EXPORT 3MF (KEEP PROJECT)' : 'F9 EXPORT 3MF (COLORS)';
+        persist('models', g.persist || {});
+        genSwitched = true;
+        log(snap.gen ? 'BACK TO ' + g.name : 'BACK TO NO MODEL');
+      } else log('THAT MODEL IS NO LONGER IN MEMORY - RELOAD IT', 'err');
+    }
+    const partsChanged = genSwitched || JSON.stringify([snap.ids, snap.on]) !== JSON.stringify([parts.map(x => x.uid), parts.map(x => x.on)]);
     if (partsChanged) {
       parts = snap.ids.map(id => partRegistry.get(id)).filter(Boolean);
       parts.forEach((x, i) => x.on = snap.on[i]);
       removedSrcs = snap.removed.slice();
       renderParts();
       rebuildModel(false);
+      if (genSwitched) fitCamera();
     }
     const before = stamps;
     stamps = snap.stamps.map(x => stampRegistry.get(x.id)).filter(Boolean);
@@ -2593,9 +2617,8 @@ const DEMO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 function loadDemo() {
   const g = new THREE.CylinderGeometry(35, 35, 8, 128, 1);
   g.rotateX(Math.PI / 2);
-  setParts([{ name: 'DEMO_PUCK.STL', geom: cleanGeom(g), on: true }], 'DEMO_PUCK.STL');
+  setParts([{ name: 'DEMO_PUCK.STL', geom: cleanGeom(g), on: true }], 'DEMO_PUCK.STL', null, { demo: true });
   if (restoringSession) return;
-  persist('models', { demo: true });
   addImageStamp({ kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG }, { kind: 'svg', name: 'BOLT.SVG', text: DEMO_SVG });
 }
 
@@ -3173,7 +3196,10 @@ function help(show) {
 const actions = {
   loadStl: () => $('#fStl').click(),
   loadImg: () => $('#fImg').click(),
-  demo: loadDemo,
+  demo: () => {
+    if ((model || stamps.length) && !confirm('LOAD THE DEMO? IT REPLACES YOUR MODEL AND ADDS A DEMO STAMP.\n(CTRL+Z UNDOES IT)')) return;
+    loadDemo();
+  },
   build: () => buildAsync(),
   exp3mf: export3MF,
   expStl: () => exportSTL('merged'),
