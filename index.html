@@ -37,7 +37,7 @@
 
 <div id="ui">
   <header class="bar">
-    <span>&#9632; STL-STAMPER v1.86</span>
+    <span>&#9632; STL-STAMPER v1.87</span>
     <span class="path">C:\STAMPER&gt; <span id="cmd">READY</span><span class="cur"></span></span>
     <span id="clock">--</span>
   </header>
@@ -91,6 +91,8 @@
         <div class="sl" data-k="shpDashLen" data-dash-only="dashed" data-label="DASH LENGTH" data-unit="MM" data-min="0.3" data-max="30" data-step="0.1"></div>
         <div class="sl" data-k="shpGap" data-dash-only="dashed dotted" data-label="GAP" data-unit="MM" data-min="0.2" data-max="30" data-step="0.1"></div>
         <div class="hint">SIZE (PLACEMENT) IS THE SHAPE'S LONGEST SIDE, OUTLINE INCLUDED.</div>
+        <button class="btn" data-act="fitAround" data-shp-hide="line">FIT AROUND MODEL</button>
+        <div class="hint" data-shp-hide="line">MAKES THE SHAPE OVERHANG THE MODEL EVENLY ON ALL SIDES AND CENTERS IT, SO A WRAPPED OUTLINE RUNS ROUND THE SIDES AT ONE HEIGHT.</div>
       </section>
 
       <section class="win" data-kind="image"><h2>TRACE</h2>
@@ -122,7 +124,7 @@
         <div class="sl" data-k="rot" data-label="ROTATE" data-unit="DEG" data-min="-180" data-max="180" data-step="1"></div>
         <div class="ck" data-k="mirror" data-label="MIRROR"></div>
         <div class="ck" data-k="follow" data-label="FOLLOW SURFACE NORMAL"></div>
-        <div class="ck" data-k="conform" data-label="WRAP TO CURVED SURFACE"></div>
+        <div class="ck" data-k="conform" data-label="WRAP AROUND THE MODEL"></div>
         <div class="row">
           <button class="btn" data-act="recenter">RESET POSITION</button>
           <button class="btn" data-act="upright">UPRIGHT</button>
@@ -274,6 +276,10 @@ KEYS
                 ROUND HANDLE ROTATES (+SHIFT = 15 DEG STEPS).
                 CLICK ELSEWHERE OR ESC TO DESELECT
  CENTER H/V ... CENTER THE STAMP ON ITS FACE
+ WRAP ......... THE STAMP IS LAID OVER THE SURFACE LIKE A
+                STICKER: BIGGER THAN THE FACE, IT FOLDS OVER
+                THE EDGES ONTO THE NEXT FACES (UNCHECK IT FOR
+                A FLAT PROJECTION ALONG THE NORMAL)
  RIGHT MOUSE .. ORBIT CAMERA
  MIDDLE MOUSE . PAN CAMERA
  WHEEL ........ ZOOM
@@ -1339,75 +1345,158 @@ function drawPreview() {
 /* ============================================================
    STAMP GEOMETRY
    ============================================================ */
-const DENSIFY = 0.01, STEINER = 1 / 36;
-
-function densify(loop, maxLen) {
-  const out = [];
-  for (let i = 0; i < loop.length; i++) {
-    const a = loop[i], b = loop[(i + 1) % loop.length];
-    out.push(a);
-    const k = Math.floor(a.distanceTo(b) / maxLen);
-    for (let j = 1; j <= k; j++) out.push(a.clone().lerp(b, j / (k + 1)));
-  }
-  return out;
-}
-
-// interior points so the caps can bend with the surface
-function steinerPoints(outer, holes) {
-  const g = STEINER, min2 = (g * 0.45) ** 2;
-  const hash = new Map();
-  const key = (i, j) => i * 73856093 ^ j * 19349663;
-  for (const loop of [outer, ...holes]) for (const p of loop) {
-    const k = key(Math.floor(p.x / g), Math.floor(p.y / g));
-    if (!hash.has(k)) hash.set(k, []);
-    hash.get(k).push(p);
-  }
-  const bb = new THREE.Box2().setFromPoints(outer);
-  const out = [];
-  for (let x = Math.ceil(bb.min.x / g) * g + g * 0.5; x < bb.max.x; x += g) {
-    for (let y = Math.ceil(bb.min.y / g) * g + g * 0.5; y < bb.max.y; y += g) {
-      const ci = Math.floor(x / g), cj = Math.floor(y / g);
-      let near = false;
-      for (let di = -1; di <= 1 && !near; di++) for (let dj = -1; dj <= 1 && !near; dj++) {
-        const list = hash.get(key(ci + di, cj + dj));
-        if (list) for (const p of list) if ((p.x - x) ** 2 + (p.y - y) ** 2 < min2) { near = true; break; }
-      }
-      if (near || !pip(x, y, outer) || holes.some(h => pip(x, y, h))) continue;
-      out.push(new V2(x, y));
-    }
-  }
-  return out;
-}
-
 // 2D triangulation per shape, cached per mirror/conform combination
-function getPrep() {
-  const key = (P.mirror ? 'm' : 'n') + (P.conform ? 'c' : 'p');
+function getPrep(preview = false) {
+  // wrapping needs small triangles (in mm, so a stamp's ends at openings stay crisp); the step is
+  // quantised so dragging SIZE doesn't re-refine on every tick
+  const maxEdge = P.conform ? wrapMaxEdge(preview) : 0;
+  const key = (P.mirror ? 'm' : 'n') + (P.conform ? 'c' + maxEdge : 'p');
   if (art.cache[key]) return art.cache[key];
   const out = [];
   for (const sh of art.shapes) {
     const mx = P.mirror ? -1 : 1;
     const map = loop => loop.map(p => new V2(p.x * mx, p.y));
-    let outer = map(sh.outer), holes = sh.holes.map(map);
-    if (P.conform) { outer = densify(outer, DENSIFY); holes = holes.map(h => densify(h, DENSIFY)); }
+    const outer = map(sh.outer), holes = sh.holes.map(map);
     if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
     for (const h of holes) if (!THREE.ShapeUtils.isClockWise(h)) h.reverse();
-    const steiner = P.conform ? steinerPoints(outer, holes) : [];
-    const faces = THREE.ShapeUtils.triangulateShape(outer.slice(), [...holes.map(h => h.slice()), ...steiner.map(p => [p])]);
-    const all = [outer, ...holes].flat().concat(steiner);
-    const pts = new Float64Array(all.length * 2);
-    all.forEach((p, i) => { pts[i * 2] = p.x; pts[i * 2 + 1] = p.y; });
-    const tris = [];
+    const faces = THREE.ShapeUtils.triangulateShape(outer.slice(), holes.map(h => h.slice()));
+    const all = [outer, ...holes].flat();
+    const xs = all.map(p => p.x), ys = all.map(p => p.y);
+    let tris = [];
     for (const [a, b, c] of faces) {
-      const cr = (all[b].x - all[a].x) * (all[c].y - all[a].y) - (all[b].y - all[a].y) * (all[c].x - all[a].x);
+      const cr = (xs[b] - xs[a]) * (ys[c] - ys[a]) - (ys[b] - ys[a]) * (xs[c] - xs[a]);
       if (cr === 0) continue;
       if (cr > 0) tris.push(a, b, c); else tris.push(a, c, b);
     }
-    const loops = [];
-    let s = 0;
-    for (const l of [outer, ...holes]) { loops.push([s, l.length]); s += l.length; }
-    out.push({ n: all.length, pts, tris, loops });
+    // wrapping maps every point separately onto the surface, so no triangle may be long enough
+    // to cut through the model as a chord: split edges until all are short
+    if (P.conform) tris = refineTris(xs, ys, tris, maxEdge);
+    out.push({ n: xs.length, pts: Float64Array.from(xs.flatMap((x, i) => [x, ys[i]])), tris, walls: boundaryEdges(tris) });
   }
   return (art.cache[key] = out);
+}
+
+// longest triangle edge for wrapped stamps, in stamp units. Build: as fine as ~1 mm while the stamp
+// stays under ~30k points; live preview: coarser (~2.5 mm) so dragging stays smooth
+function wrapMaxEdge(preview) {
+  let area = 0; // in stamp units^2
+  for (const sh of art.shapes) {
+    area += Math.abs(THREE.ShapeUtils.area(sh.outer));
+    for (const h of sh.holes) area -= Math.abs(THREE.ShapeUtils.area(h));
+  }
+  const pointsPerMm2 = 34; // what the edge-splitting refinement produces per mm^2 at 1 mm edges
+  const mm = Math.max(preview ? 2.5 : 1, Math.sqrt(area * P.size * P.size * pointsPerMm2 / (preview ? 8000 : 30000)));
+  // quantise to steps of sqrt(2) so it only changes when the size changes noticeably
+  return 2 ** (Math.floor(Math.log2(mm / P.size) * 2) / 2);
+}
+
+// conforming refinement: split the longest edges at their midpoint (both triangles sharing an edge are
+// split together, so the mesh stays watertight) until no edge exceeds maxLen. Delaunay edge flips
+// between rounds keep triangles well shaped, so the point count stays close to the minimum.
+function refineTris(xs, ys, flat, maxLen) {
+  const tris = [];
+  for (let i = 0; i < flat.length; i += 3) tris.push([flat[i], flat[i + 1], flat[i + 2]]);
+  const alive = tris.map(() => true);
+  const key = (a, b) => a < b ? a * 4194304 + b : b * 4194304 + a;
+  const edges = new Map();
+  const addTri = id => {
+    const t = tris[id];
+    for (let k = 0; k < 3; k++) {
+      const e = key(t[k], t[(k + 1) % 3]);
+      const l = edges.get(e);
+      if (l) l.push(id); else edges.set(e, [id]);
+    }
+  };
+  const dropTri = id => {
+    alive[id] = false;
+    const t = tris[id];
+    for (let k = 0; k < 3; k++) {
+      const e = key(t[k], t[(k + 1) % 3]);
+      const l = edges.get(e).filter(x => x !== id);
+      if (l.length) edges.set(e, l); else edges.delete(e);
+    }
+  };
+  tris.forEach((_, id) => addTri(id));
+  const len2 = (a, b) => (xs[a] - xs[b]) ** 2 + (ys[a] - ys[b]) ** 2;
+  const max2 = maxLen * maxLen;
+  const orient = (a, b, c) => (xs[b] - xs[a]) * (ys[c] - ys[a]) - (ys[b] - ys[a]) * (xs[c] - xs[a]);
+  // > 0: d lies inside the circumcircle of the counter-clockwise triangle a b c
+  const inCircle = (a, b, c, d) => {
+    const ax = xs[a] - xs[d], ay = ys[a] - ys[d], bx = xs[b] - xs[d], by = ys[b] - ys[d], cx = xs[c] - xs[d], cy = ys[c] - ys[d];
+    return (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay) + (cx * cx + cy * cy) * (ax * by - bx * ay);
+  };
+  // Lawson flips on interior edges (outline edges have one triangle and are never flipped)
+  const flipAll = () => {
+    const stack = [...edges.keys()];
+    let guard = 0;
+    while (stack.length && guard++ < 4e6) {
+      const e = stack.pop();
+      const own = edges.get(e);
+      if (!own || own.length !== 2) continue;
+      const [t1, t2] = own, T1 = tris[t1], T2 = tris[t2];
+      let k = 0;
+      while (k < 3 && key(T1[k], T1[(k + 1) % 3]) !== e) k++;
+      if (k === 3) continue;
+      const a = T1[k], b = T1[(k + 1) % 3], c = T1[(k + 2) % 3];
+      const d = T2.find(v => v !== a && v !== b);
+      if (inCircle(a, b, c, d) <= 0) continue;
+      if (orient(a, d, c) <= 0 || orient(d, b, c) <= 0) continue;
+      dropTri(t1); dropTri(t2);
+      tris.push([a, d, c]); alive.push(true); addTri(tris.length - 1);
+      tris.push([d, b, c]); alive.push(true); addTri(tris.length - 1);
+      stack.push(key(a, d), key(d, b), key(b, c), key(c, a));
+    }
+  };
+  flipAll();
+  for (let pass = 0; pass < 40; pass++) {
+    const long = [];
+    for (const [e, l] of edges) {
+      const id = l[0], t = tris[id];
+      for (let k = 0; k < 3; k++) {
+        const a = t[k], b = t[(k + 1) % 3];
+        if (key(a, b) === e) { const d = len2(a, b); if (d > max2) long.push([d, a, b]); break; }
+      }
+    }
+    if (!long.length) break;
+    long.sort((p, q) => q[0] - p[0]);
+    for (const [, a, b] of long) {
+      const owners = edges.get(key(a, b));
+      if (!owners) continue; // already split this pass
+      const m = xs.length;
+      xs.push((xs[a] + xs[b]) / 2);
+      ys.push((ys[a] + ys[b]) / 2);
+      for (const id of owners.slice()) {
+        const t = tris[id];
+        // rotate so the split edge is (u, v), keeping the triangle's winding
+        let k = 0;
+        while (!((t[k] === a && t[(k + 1) % 3] === b) || (t[k] === b && t[(k + 1) % 3] === a))) k++;
+        const u = t[k], v = t[(k + 1) % 3], w = t[(k + 2) % 3];
+        dropTri(id);
+        tris.push([u, m, w]); alive.push(true); addTri(tris.length - 1);
+        tris.push([m, v, w]); alive.push(true); addTri(tris.length - 1);
+      }
+    }
+    flipAll();
+  }
+  const outFlat = [];
+  tris.forEach((t, id) => { if (alive[id]) outFlat.push(...t); });
+  return outFlat;
+}
+
+// directed edges used by exactly one triangle = the outline (outer CCW, holes CW): the side walls
+function boundaryEdges(flat) {
+  const count = new Map();
+  const key = (a, b) => a < b ? a * 4194304 + b : b * 4194304 + a;
+  for (let i = 0; i < flat.length; i += 3) for (let k = 0; k < 3; k++) {
+    const e = key(flat[i + k], flat[i + (k + 1) % 3]);
+    count.set(e, (count.get(e) || 0) + 1);
+  }
+  const walls = [];
+  for (let i = 0; i < flat.length; i += 3) for (let k = 0; k < 3; k++) {
+    const a = flat[i + k], b = flat[i + (k + 1) % 3];
+    if (count.get(key(a, b)) === 1) walls.push(a, b);
+  }
+  return walls;
 }
 
 function upRef(n) {
@@ -1445,50 +1534,277 @@ function projectToSurface(W, N, reach, out) {
   return !!best;
 }
 
+/* ---------- wrapping: like paper folded around the model's bounding box ----------
+   Inside the face the stamp is projected straight onto the surface. Past the model's edge it
+   unfolds onto the side of the bounding box (and on to the opposite face if it is long enough)
+   and is projected inward from there onto the outer wall. Pieces that would land deep inside the
+   model (a port or button opening) or in the corners beyond two edges are dropped. */
+function wrapContext(O, N) {
+  const bb = model.geom.boundingBox;
+  let ax = 0;
+  for (let i = 1; i < 3; i++) if (Math.abs(N.getComponent(i)) > Math.abs(N.getComponent(ax))) ax = i;
+  if (Math.abs(N.getComponent(ax)) < 0.9) return null; // tilted face: no box side to fold onto
+  const [a1, a2] = [0, 1, 2].filter(i => i !== ax);
+  const inset = Math.max(3, Math.min(bb.max.getComponent(a1) - bb.min.getComponent(a1), bb.max.getComponent(a2) - bb.min.getComponent(a2)) * 0.25);
+  return { bb, ax, a1, a2, sN: Math.sign(N.getComponent(ax)), level: O.getComponent(ax), inset };
+}
+
+// ray from outside along -fn; the first surface within maxDepth of the box face, normal facing fn.
+// tangent: the horizontal direction a wrapped band runs along on that side
+const _wrRay = new THREE.Ray();
+function castInto(R, fn, maxDepth, outP, outN, tangent) {
+  _wrRay.origin.copy(R).addScaledVector(fn, 2);
+  _wrRay.direction.copy(fn).negate();
+  let best = null;
+  for (const h of model.geom.boundsTree.raycast(_wrRay, THREE.DoubleSide)) if (!best || h.distance < best.distance) best = h;
+  if (!best || best.distance - 2 > maxDepth) return false;
+  outN.copy(best.face.normal);
+  if (outN.dot(fn) < 0) outN.negate();
+  // the wall of a groove / slot faces sideways (along the band, not outward like a fillet or a
+  // rounded corner does): treat it like an opening, not a place to stamp on
+  if (outN.dot(fn) < 0.35 || (tangent && Math.abs(outN.dot(tangent)) > 0.5)) return false;
+  outP.copy(best.point);
+  return true;
+}
+
+// nearest surface point to T, accepted only if T lies along that surface's normal (the surface faces
+// T head-on). The nearest spot to a point floating over an opening or a groove is an edge, which fails.
+const _cpRes = {}, _cpA = new V3(), _cpB = new V3(), _cpC = new V3(), _cpD = new V3();
+function closestFacing(T, maxDist, outP, outN) {
+  const hit = model.geom.boundsTree.closestPointToPoint(T, _cpRes);
+  if (!hit || hit.distance > maxDist) return false;
+  const idx = model.geom.index.array, pos = model.geom.attributes.position.array, f = hit.faceIndex * 3;
+  _cpA.fromArray(pos, idx[f] * 3); _cpB.fromArray(pos, idx[f + 1] * 3); _cpC.fromArray(pos, idx[f + 2] * 3);
+  outN.subVectors(_cpB, _cpA).cross(_cpC.sub(_cpA)).normalize();
+  _cpD.subVectors(T, hit.point);
+  if (_cpD.lengthSq() > 1e-12) {
+    _cpD.normalize();
+    let dot = outN.dot(_cpD);
+    if (dot < 0) { outN.negate(); dot = -dot; }
+    if (dot < 0.85) return false;
+  }
+  outP.copy(hit.point);
+  return true;
+}
+
+const _wrR = new V3(), _wrFn = new V3(), _wrT = new V3(), _wrDir = new V3(), _wrHitP = new V3(), _wrHitN = new V3();
+// landed in a recess (a shallow slot or pocket): noticeably deeper than the wall a few mm to either
+// side along the band. On a convex rounded corner the neighbours are deeper, not shallower, so it passes.
+const _rcP = new V3(), _rcN = new V3(), _rcQ = new V3();
+function inRecess(T, dir, tangent, maxD, landed) {
+  const depth = q => _rcQ.subVectors(q, _rcP).dot(dir);
+  const d0 = _rcQ.subVectors(T, landed).dot(dir);
+  // a recess has shallower wall on BOTH sides; a wall that curves away (the start of a rounded corner)
+  // is shallower on one side only and must not count
+  const shallowerOn = side => [2.5, 5, 8].some(s => {
+    const q = new V3().copy(T).addScaledVector(tangent, side * s);
+    return castInto(q, dir, maxD, _rcP, _rcN) && d0 - depth(q) > 0.8;
+  });
+  return shallowerOn(-1) && shallowerOn(1);
+}
+
+
+// W: the point on the stamp's plane. Writes the surface point + its outward normal and returns true.
+// A dropped point (opening, beyond a corner) returns false and is parked `lift` mm outside the face it
+// would have been on, so the brush around it stays outside the material and cuts nothing there.
+function wrapPoint(ctx, W, N, reach, lift, outP, outN) {
+  const { bb, ax, a1, a2, sN, level } = ctx;
+  const over = a => {
+    const v = W.getComponent(a), lo = bb.min.getComponent(a), hi = bb.max.getComponent(a);
+    return v < lo ? v - lo : v > hi ? v - hi : 0;
+  };
+  const o1 = over(a1), o2 = over(a2);
+  if (!o1 && !o2) {
+    if (projectToSurface(W, N, reach, outP)) { outN.copy(N); return true; }
+    outP.copy(W).addScaledVector(N, lift);
+    outN.copy(N);
+    return false;
+  }
+  const depth = sN > 0 ? level - bb.min.getComponent(ax) : bb.max.getComponent(ax) - level;
+  // how far past the face's outline. Past a corner it is the larger of the two overhangs (not the
+  // diagonal), so a square-cornered outline wraps round the model's corner at one height
+  const e = Math.max(Math.abs(o1), Math.abs(o2));
+  if (e <= depth) {
+    // folded onto the sides: the point goes e mm down, e mm out from the outline, and lands on the
+    // nearest surface that faces it. On a straight wall that is straight in; round a rounded corner it
+    // follows the curve; over an opening or a groove the nearest spot is an edge, so it is dropped.
+    _wrR.copy(W).setComponent(ax, level - sN * e);
+    _wrFn.set(0, 0, 0).setComponent(a1, o1).setComponent(a2, o2).normalize();
+    if (o1 && o2) {
+      // round a corner: a level ray straight in toward the corner (the nearest point there is often a
+      // sharp edge where two walls meet, which would be rejected); grooves are caught as recesses
+      _wrT.set(0, 0, 0).setComponent(ax, 1).cross(_wrFn);
+      if (castInto(_wrR, _wrFn, e + ctx.inset, outP, outN) && !(ctx.checkRecess && inRecess(_wrR, _wrFn, _wrT, e + ctx.inset, outP))) return true;
+      outP.copy(_wrR).addScaledVector(_wrFn, lift);
+      outN.copy(_wrFn);
+      return false;
+    }
+    // a straight ray inward must first meet an outward-facing wall (over an opening it runs into the
+    // port's tunnel or finds nothing -> dropped, so holes aren't outlined); then the nearest point
+    // refines where it lands, which is what follows a rounded corner
+    const rayHit = castInto(_wrR, _wrFn, e + ctx.inset, outP, outN);
+    if (rayHit) { _wrHitP.copy(outP); _wrHitN.copy(outN); }
+    if (rayHit && closestFacing(_wrR, e + ctx.inset, outP, outN)) {
+      // the nearest point only says which way the wall is (that is what follows a rounded corner);
+      // land with a level ray that way, so every point keeps its exact height and edges stay straight
+      _wrDir.subVectors(_wrR, outP).setComponent(ax, 0);
+      if (_wrDir.lengthSq() < 1e-10) _wrDir.copy(_wrFn); else _wrDir.normalize();
+      // level direction across the wall: a groove's side wall faces along it and is rejected
+      _wrT.set(0, 0, 0).setComponent(ax, 1).cross(_wrDir);
+      if (castInto(_wrR, _wrDir, e + ctx.inset, outP, outN, _wrT) && !(ctx.checkRecess && inRecess(_wrR, _wrDir, _wrT, e + ctx.inset, outP))) return true;
+    }
+    // a chamfer (e.g. 45 deg) faces the point only half-way, so the nearest-point step rejects it; the
+    // straight level ray still landed on it fine. Keep that unless it faces sideways (a groove wall).
+    if (rayHit && _wrHitN.dot(_wrFn) >= 0.5) {
+      _wrT.set(0, 0, 0).setComponent(ax, 1).cross(_wrFn);
+      if (!(ctx.checkRecess && inRecess(_wrR, _wrFn, _wrT, e + ctx.inset, _wrHitP))) {
+        outP.copy(_wrHitP);
+        outN.copy(_wrHitN);
+        return true;
+      }
+    }
+    outP.copy(_wrR).addScaledVector(_wrFn, lift);
+    outN.copy(_wrFn);
+    return false;
+  }
+  // further than the sides are tall: round onto the opposite face (beyond a corner: dropped)
+  const a = Math.abs(o1) >= Math.abs(o2) ? a1 : a2, other = a === a1 ? a2 : a1;
+  const o = a === a1 ? o1 : o2, sa = Math.sign(o), past = Math.abs(o) - depth;
+  const hi = bb.max.getComponent(a), lo = bb.min.getComponent(a);
+  _wrR.copy(W);
+  _wrR.setComponent(ax, sN > 0 ? bb.min.getComponent(ax) : bb.max.getComponent(ax));
+  _wrR.setComponent(a, (sa > 0 ? hi : lo) - sa * Math.min(Math.max(past, 0), hi - lo));
+  _wrFn.set(0, 0, 0).setComponent(ax, -sN);
+  const gone = (o1 && o2) || past > hi - lo || past < 0;
+  const extent = bb.max.getComponent(ax) - bb.min.getComponent(ax);
+  _wrT.set(0, 0, 0).setComponent(other, 1);
+  if (!gone && castInto(_wrR, _wrFn, Math.max(3, extent * 0.12), outP, outN, _wrT)) return true;
+  outP.copy(_wrR).addScaledVector(_wrFn, lift);
+  outN.copy(_wrFn);
+  return false;
+}
+
 // closed solid: caps follow the surface, offset +hTop / -hBot along the stamp normal.
 // missLift: where a point misses the model (stamp hanging past an edge) it is lifted this far
 // out along the normal, so that part of the brush ends cleanly instead of slicing the edge
-function brushGeometry(hTop, hBot, missLift = 0) {
-  const prep = getPrep();
+// pieces of the clipped stamp connected through shared points; a piece under ISLAND_MIN_MM2 of real
+// (3D) area is removed
+const ISLAND_MIN_MM2 = 2;
+function dropSmallPieces(tr, surf, minArea) {
+  const parent = new Map();
+  const find = i => { let r = i; while (parent.has(r) && parent.get(r) !== r) r = parent.get(r); parent.set(i, r); return r; };
+  const join = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+  for (let i = 0; i < tr.length; i += 3) { join(tr[i], tr[i + 1]); join(tr[i], tr[i + 2]); }
+  const area = new Map(), A = new V3(), B = new V3(), C = new V3();
+  for (let i = 0; i < tr.length; i += 3) {
+    A.fromArray(surf, tr[i] * 3); B.fromArray(surf, tr[i + 1] * 3); C.fromArray(surf, tr[i + 2] * 3);
+    const a = B.sub(A).cross(C.sub(A)).length() / 2, r = find(tr[i]);
+    area.set(r, (area.get(r) || 0) + a);
+  }
+  const out = [];
+  for (let i = 0; i < tr.length; i += 3) if (area.get(find(tr[i])) >= minArea) out.push(tr[i], tr[i + 1], tr[i + 2]);
+  return out;
+}
+
+// wrapped stamps end exactly where the surface does: a triangle with some points landed and some
+// dropped is cut along its edges at the spot where the surface ends (found by bisection), and only
+// the landed part is kept. Cut points are shared with the neighbouring triangle, so the solid stays
+// closed.
+function clipTris(tr, pts, dropped, surf, nrm, placeAt, steps = 6) {
+  const cache = new Map(), s = new V3(), ns = new V3();
+  const cut = (a, b) => { // a landed, b dropped
+    const key = a < b ? a * 4194304 + b : b * 4194304 + a;
+    if (cache.has(key)) return cache.get(key);
+    let lo = 0, hi = 1;
+    let px = surf[a * 3], py = surf[a * 3 + 1], pz = surf[a * 3 + 2];
+    let qx = nrm[a * 3], qy = nrm[a * 3 + 1], qz = nrm[a * 3 + 2];
+    for (let k = 0; k < steps; k++) {
+      const t = (lo + hi) / 2;
+      if (placeAt(pts[a * 2] + (pts[b * 2] - pts[a * 2]) * t, pts[a * 2 + 1] + (pts[b * 2 + 1] - pts[a * 2 + 1]) * t, s, ns)) {
+        lo = t; px = s.x; py = s.y; pz = s.z; qx = ns.x; qy = ns.y; qz = ns.z;
+      } else hi = t;
+    }
+    const id = surf.length / 3;
+    surf.push(px, py, pz);
+    nrm.push(qx, qy, qz);
+    cache.set(key, id);
+    return id;
+  };
+  const out = [];
+  for (let i = 0; i < tr.length; i += 3) {
+    const v = [tr[i], tr[i + 1], tr[i + 2]];
+    const d = v.map(k => dropped[k]);
+    if (!d[0] && !d[1] && !d[2]) { out.push(...v); continue; }
+    if (d[0] && d[1] && d[2]) continue;
+    const poly = [];
+    for (let k = 0; k < 3; k++) {
+      const a = v[k], b = v[(k + 1) % 3];
+      if (!dropped[a]) poly.push(a);
+      if (!dropped[a] !== !dropped[b]) poly.push(dropped[a] ? cut(b, a) : cut(a, b));
+    }
+    for (let j = 1; j + 1 < poly.length; j++) out.push(poly[0], poly[j], poly[j + 1]);
+  }
+  return out;
+}
+
+// preview: pieces the wrap dropped are left out entirely (the preview need not be a closed solid)
+function brushGeometry(hTop, hBot, missLift = 0, preview = false) {
+  const prep = getPrep(preview);
   const { O, N, U, V } = frame();
   const S = P.size, reach = S * 0.6 + 2;
-  let nV = 0, nI = 0;
+  const posArr = [], idx = [];
+  const W = new V3(), s = new V3(), ns = new V3();
+  const wrap = P.conform && model?.geom.boundsTree ? wrapContext(O, N) : null;
+  if (wrap) wrap.checkRecess = !preview; // the extra rays are for the real build only
+  const lift = missLift ? hBot + 1 : 0;
+  // put one stamp point (x, y in stamp units) on the model; false = it does not land
+  const placeAt = (x, y, outS, outN) => {
+    W.copy(O).addScaledVector(U, x * S).addScaledVector(V, y * S);
+    outN.copy(N);
+    if (wrap) return wrapPoint(wrap, W, N, reach, lift, outS, outN);
+    if (P.conform) { if (!projectToSurface(W, N, reach, outS) && missLift) outS.addScaledVector(N, missLift); }
+    else outS.copy(W);
+    return true;
+  };
   for (const sp of prep) {
-    nV += sp.n * 2;
-    nI += sp.tris.length * 2;
-    for (const [, len] of sp.loops) nI += len * 6;
-  }
-  const pos = new Float32Array(nV * 3), idx = new Uint32Array(nI);
-  const W = new V3(), s = new V3();
-  let vo = 0, io = 0;
-  for (const sp of prep) {
-    const n = sp.n, base = vo;
+    const n = sp.n;
+    const dropped = new Uint8Array(n);
+    const surf = [], nrm = []; // surface point + normal per point; grows with the cut points
     for (let i = 0; i < n; i++) {
-      W.copy(O).addScaledVector(U, sp.pts[i * 2] * S).addScaledVector(V, sp.pts[i * 2 + 1] * S);
-      if (P.conform) { if (!projectToSurface(W, N, reach, s) && missLift) s.addScaledVector(N, missLift); }
-      else s.copy(W);
-      const t = (base + i) * 3, b = (base + n + i) * 3;
-      pos[t] = s.x + N.x * hTop; pos[t + 1] = s.y + N.y * hTop; pos[t + 2] = s.z + N.z * hTop;
-      pos[b] = s.x - N.x * hBot; pos[b + 1] = s.y - N.y * hBot; pos[b + 2] = s.z - N.z * hBot;
+      if (!placeAt(sp.pts[i * 2], sp.pts[i * 2 + 1], s, ns)) dropped[i] = 1;
+      surf.push(s.x, s.y, s.z);
+      nrm.push(ns.x, ns.y, ns.z);
     }
-    const tr = sp.tris;
-    for (let i = 0; i < tr.length; i += 3) {
-      idx[io++] = base + tr[i]; idx[io++] = base + tr[i + 1]; idx[io++] = base + tr[i + 2];
-      idx[io++] = base + n + tr[i]; idx[io++] = base + n + tr[i + 2]; idx[io++] = base + n + tr[i + 1];
-    }
-    for (const [st, len] of sp.loops) {
-      for (let j = 0; j < len; j++) {
-        const a = st + j, b = st + (j + 1) % len;
-        const at = base + a, bt = base + b, ab = base + n + a, bb = base + n + b;
-        idx[io++] = ab; idx[io++] = bb; idx[io++] = bt;
-        idx[io++] = ab; idx[io++] = bt; idx[io++] = at;
+    let tr = sp.tris, wl = sp.walls;
+    if (wrap) {
+      if (dropped.some(Boolean)) {
+        // the live preview clips too (coarser bisection), so it shows what the build will make
+        tr = clipTris(tr, sp.pts, dropped, surf, nrm, placeAt, preview ? 4 : 6);
+        // tiny pieces left over (bits inside a groove or around a port) go too; measured after the
+        // clipping, by real area, so thin lines between two openings are kept
+        tr = dropSmallPieces(tr, surf, ISLAND_MIN_MM2);
+        wl = boundaryEdges(tr);
       }
     }
-    vo += n * 2;
+    const m = surf.length / 3, base = posArr.length / 3;
+    for (let k = 0; k < 2; k++) {
+      const h = k ? -hBot : hTop;
+      for (let i = 0; i < m; i++) {
+        posArr.push(surf[i * 3] + nrm[i * 3] * h, surf[i * 3 + 1] + nrm[i * 3 + 1] * h, surf[i * 3 + 2] + nrm[i * 3 + 2] * h);
+      }
+    }
+    for (let i = 0; i < tr.length; i += 3) {
+      idx.push(base + tr[i], base + tr[i + 1], base + tr[i + 2]);
+      idx.push(base + m + tr[i], base + m + tr[i + 2], base + m + tr[i + 1]);
+    }
+    for (let j = 0; j < wl.length; j += 2) {
+      const at = base + wl[j], bt = base + wl[j + 1], ab = base + m + wl[j], bb = base + m + wl[j + 1];
+      idx.push(ab, bb, bt, ab, bt, at);
+    }
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(posArr), 3));
+  g.setIndex(new THREE.BufferAttribute(Uint32Array.from(idx), 1));
   g.computeBoundingBox();
   g.computeBoundingSphere();
   return g;
@@ -1521,7 +1837,7 @@ function showPreview() {
 function updatePreviewMesh() {
   if (!ready()) return;
   const [ht, hb] = previewHeights();
-  const g = brushGeometry(ht, hb);
+  const g = brushGeometry(ht, hb, 0, true);
   artMesh.geometry.dispose();
   artMesh.geometry = g;
   artMesh.material = P.mode === 'cutout' ? artMesh.userData.mats.ghost : artMesh.userData.mats.solid;
@@ -2494,6 +2810,44 @@ vp.addEventListener('dblclick', e => {
   if (hit) { placeAtHit(hit, pick.ray.direction, true); markDirty(); }
 });
 
+// shapes: same overhang past the model on every side + centred, so a wrapped outline
+// lands at one height all the way round
+function fitAroundModel() {
+  const s = activeStamp;
+  if (!s || s.kind !== 'shape' || P.shpType === 'line' || !ready()) { log('SELECT A SHAPE STAMP ON THE MODEL FIRST', 'err'); return; }
+  const { N, U, V } = frame();
+  const ctx = wrapContext(place.p, N);
+  if (!ctx) { log('ONLY WORKS ON A FACE ALIGNED WITH THE MODEL', 'err'); return; }
+  const bb = model.geom.boundingBox;
+  const ext = a => bb.max.getComponent(a) - bb.min.getComponent(a);
+  // the model's size along the stamp's own width / height directions
+  const along = dir => Math.abs(dir.getComponent(ctx.a1)) * ext(ctx.a1) + Math.abs(dir.getComponent(ctx.a2)) * ext(ctx.a2);
+  const Bu = along(U), Bv = along(V);
+  const lw = P.shpStroke ? P.shpWidth : 0;
+  // overhang per side: if the shape already reaches onto the sides, keep its average reach;
+  // otherwise put the outline half-way up the model's sides
+  const side = ctx.sN > 0 ? ctx.level - bb.min.getComponent(ctx.ax) : bb.max.getComponent(ctx.ax) - ctx.level;
+  const ou = (art.w * P.size - Bu) / 2, ov = (art.h * P.size - Bv) / 2, avg = (ou + ov) / 2;
+  const o = avg >= lw && avg <= side ? avg : Math.max(lw, side / 2 + lw / 2);
+  const W2 = Bu + 2 * o, H2 = Bv + 2 * o;
+  P.shpRatio = Math.min(5, Math.max(0.2, +((W2 - lw) / (H2 - lw)).toFixed(3)));
+  ui.shpRatio.set(P.shpRatio);
+  onParam('shpRatio');
+  if (P.shpType === 'square' && P.shpRadius) {
+    // square corners wrap round the model's corners at one height; rounded ones would dip there
+    P.shpRadius = 0;
+    ui.shpRadius.set(0);
+    onParam('shpRadius');
+  }
+  P.size = +Math.max(W2, H2).toFixed(1);
+  ui.size.set(P.size);
+  skipGroup = true;
+  onParam('size');
+  skipGroup = false;
+  centerOnFace(true, true);
+  log(`FITTED: ${o.toFixed(1)} MM OVERHANG ON EVERY SIDE`);
+}
+
 // center the stamp on the face it sits on: the face = triangles facing the same way, near its plane
 function centerOnFace(alongH, alongV) {
   if (!ready()) return;
@@ -3421,6 +3775,7 @@ const actions = {
   centerH: () => centerOnFace(true, false),
   centerV: () => centerOnFace(false, true),
   centerHV: () => centerOnFace(true, true),
+  fitAround: fitAroundModel,
   face: b => placeFrom(new V3(...b.dataset.dir.split(',').map(Number))),
   flip: () => { if (ready()) placeFrom(place.n.clone()); },
   alignRow: () => alignSelected('row'),

@@ -16,7 +16,8 @@ http.createServer((req, res) => {
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404).end('not found'); return; }
-    res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
+    // no-store: after an update the browser always gets the new page, never a stale cached copy
+    res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(data);
   });
 }).listen(port, '127.0.0.1', () => {
