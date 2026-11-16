@@ -3060,7 +3060,16 @@ function openFonts() {
   $('#fontSearch').value = '';
   $('#fontSearch').focus();
   renderFontList();
-  loadFontCatalog().then(() => { renderFontList(); renderWeights(); });
+  scrollToCurrentFont();
+  loadFontCatalog().then(() => { renderFontList(); scrollToCurrentFont(); renderWeights(); });
+}
+
+// reopening the picker lands on the font in use instead of the top of the list
+function scrollToCurrentFont() {
+  const idx = fontNames.indexOf(P.txtFont);
+  if (idx < 0) return;
+  while (fontShown <= idx && fontShown < fontNames.length) showMoreFonts();
+  $('#fontList .font-item.on')?.scrollIntoView({ block: 'center' });
 }
 function closeFonts() { $('#fontModal').hidden = true; }
 
@@ -3093,14 +3102,20 @@ function showMoreFonts() {
   fontShown += next.length;
   list.insertAdjacentHTML('beforeend', next.map(f => `<button type="button" class="font-item${f === P.txtFont ? ' on' : ''}" data-font="${f.replace(/"/g, '&quot;')}">
     <span class="fi-name">${f.toUpperCase()}</span><span class="fi-sample">${f.replace(/</g, '&lt;')}</span></button>`).join(''));
-  // each sample renders in its own font (tiny subset requests, only for what's listed)
-  for (const btn of [...list.querySelectorAll('.font-item')].slice(-next.length)) {
-    const fam = btn.dataset.font;
-    previewFont(fam).then(alias => { btn.querySelector('.fi-sample').style.fontFamily = `"${alias}", sans-serif`; });
-  }
+  // each sample renders in its own font, fetched (a tiny subset) only once its row is on screen
+  for (const btn of [...list.querySelectorAll('.font-item')].slice(-next.length)) fontPreviewObserver.observe(btn);
   // the page still doesn't fill the box: keep going so it can scroll
   if (list.scrollHeight <= list.clientHeight + 10) showMoreFonts();
 }
+
+const fontPreviewObserver = new IntersectionObserver(entries => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    const btn = en.target;
+    fontPreviewObserver.unobserve(btn);
+    previewFont(btn.dataset.font).then(alias => { btn.querySelector('.fi-sample').style.fontFamily = `"${alias}", sans-serif`; });
+  }
+}, { root: $('#fontList'), rootMargin: '200px 0px' });
 
 $('#fontList').addEventListener('scroll', e => {
   const l = e.currentTarget;
