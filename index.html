@@ -3064,26 +3064,48 @@ function openFonts() {
 }
 function closeFonts() { $('#fontModal').hidden = true; }
 
+// the list grows a page at a time as you scroll to its end (suggestions first, then the whole catalog)
+const FONT_PAGE = 40;
+let fontNames = [], fontShown = 0;
+
 function renderFontList() {
   const q = $('#fontSearch').value.trim().toLowerCase();
-  let names;
-  if (!q) names = SUGGESTED_FONTS;
-  else if (fontCatalog) {
+  if (!q) {
+    const rest = fontCatalog ? fontCatalog.map(f => f.family).filter(f => !SUGGESTED_FONTS.includes(f)) : [];
+    fontNames = [...SUGGESTED_FONTS, ...rest];
+  } else if (fontCatalog) {
     const hits = fontCatalog.filter(f => f.family.toLowerCase().includes(q));
     hits.sort((a, b) => (b.family.toLowerCase().startsWith(q) - a.family.toLowerCase().startsWith(q)) || a.family.localeCompare(b.family));
-    names = hits.slice(0, 60).map(f => f.family);
-  } else names = SUGGESTED_FONTS.filter(f => f.toLowerCase().includes(q));
-  $('#fontHint').textContent = !q ? 'SUGGESTED - TYPE TO SEARCH ALL GOOGLE FONTS' + (fontCatalog ? ` (${fontCatalog.length})` : '')
-    : `${names.length}${names.length === 60 ? '+' : ''} MATCHES` + (fontCatalog ? '' : ' (FULL LIST NOT LOADED)');
+    fontNames = hits.map(f => f.family);
+  } else fontNames = SUGGESTED_FONTS.filter(f => f.toLowerCase().includes(q));
+  $('#fontHint').textContent = !q ? 'SUGGESTED FIRST, THEN ALL GOOGLE FONTS A-Z - SCROLL FOR MORE, OR TYPE TO SEARCH' + (fontCatalog ? ` (${fontCatalog.length})` : '')
+    : `${fontNames.length} MATCHES` + (fontCatalog ? '' : ' (FULL LIST NOT LOADED)');
+  $('#fontList').innerHTML = '';
+  $('#fontList').scrollTop = 0;
+  fontShown = 0;
+  showMoreFonts();
+}
+
+function showMoreFonts() {
   const list = $('#fontList');
-  list.innerHTML = names.map(f => `<button type="button" class="font-item${f === P.txtFont ? ' on' : ''}" data-font="${f.replace(/"/g, '&quot;')}">
-    <span class="fi-name">${f.toUpperCase()}</span><span class="fi-sample">${f.replace(/</g, '&lt;')}</span></button>`).join('');
+  const next = fontNames.slice(fontShown, fontShown + FONT_PAGE);
+  if (!next.length) return;
+  fontShown += next.length;
+  list.insertAdjacentHTML('beforeend', next.map(f => `<button type="button" class="font-item${f === P.txtFont ? ' on' : ''}" data-font="${f.replace(/"/g, '&quot;')}">
+    <span class="fi-name">${f.toUpperCase()}</span><span class="fi-sample">${f.replace(/</g, '&lt;')}</span></button>`).join(''));
   // each sample renders in its own font (tiny subset requests, only for what's listed)
-  for (const btn of list.querySelectorAll('.font-item')) {
+  for (const btn of [...list.querySelectorAll('.font-item')].slice(-next.length)) {
     const fam = btn.dataset.font;
     previewFont(fam).then(alias => { btn.querySelector('.fi-sample').style.fontFamily = `"${alias}", sans-serif`; });
   }
+  // the page still doesn't fill the box: keep going so it can scroll
+  if (list.scrollHeight <= list.clientHeight + 10) showMoreFonts();
 }
+
+$('#fontList').addEventListener('scroll', e => {
+  const l = e.currentTarget;
+  if (l.scrollTop + l.clientHeight > l.scrollHeight - 200) showMoreFonts();
+});
 
 $('#fontList').addEventListener('click', e => {
   const b = e.target.closest('[data-font]');
